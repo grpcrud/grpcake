@@ -23,61 +23,6 @@ import (
 
 func main() {
 	cli.Run(context.Background(), call)
-
-	// cc, err := grpc.Dial("localhost:8080", grpc.WithTransportCredentials(insecure.NewCredentials()))
-	// if err != nil {
-	// 	panic(err)
-	// }
-	//
-	// reflectClient := grpc_reflection_v1alpha.NewServerReflectionClient(cc)
-	// reflectInfoClient, err := reflectClient.ServerReflectionInfo(context.Background())
-	// if err != nil {
-	// 	panic(err)
-	// }
-	//
-	// if err := reflectInfoClient.Send(&grpc_reflection_v1alpha.ServerReflectionRequest{
-	// 	// Host:           "",
-	// 	MessageRequest: &grpc_reflection_v1alpha.ServerReflectionRequest_FileContainingSymbol{
-	// 		FileContainingSymbol: "echo.Echo",
-	// 	},
-	// }); err != nil {
-	// 	panic(err)
-	// }
-	//
-	// recv, err := reflectInfoClient.Recv()
-	// if err != nil {
-	// 	panic(err)
-	// }
-	//
-	// res := recv.MessageResponse.(*grpc_reflection_v1alpha.ServerReflectionResponse_FileDescriptorResponse)
-	//
-	// var fd descriptorpb.FileDescriptorProto
-	// if err := proto.Unmarshal(res.FileDescriptorResponse.FileDescriptorProto[0], &fd); err != nil {
-	// 	panic(err)
-	// }
-	//
-	// for _, s := range fd.Service {
-	// 	for _, m := range s.Method {
-	// 		fmt.Println(*m.Name)
-	// 	}
-	// }
-
-	// if err := reflectInfoClient.Send(&grpc_reflection_v1alpha.ServerReflectionRequest{
-	// 	// Host:           "",
-	// 	MessageRequest: &grpc_reflection_v1alpha.ServerReflectionRequest_ListServices{},
-	// }); err != nil {
-	// 	panic(err)
-	// }
-	//
-	// recv, err := reflectInfoClient.Recv()
-	// if err != nil {
-	// 	panic(err)
-	// }
-	//
-	// res := recv.MessageResponse.(*grpc_reflection_v1alpha.ServerReflectionResponse_ListServicesResponse)
-	// for _, s := range res.ListServicesResponse.Service {
-	// 	fmt.Println(s.Name)
-	// }
 }
 
 type callArgs struct {
@@ -112,10 +57,6 @@ func call(ctx context.Context, args callArgs) error {
 		}
 	} else {
 		streamDesc := grpc.StreamDesc{
-			// StreamName:    "BidiStreamEcho",
-			// Handler: func(srv interface{}, stream grpc.ServerStream) error {
-			//
-			// },
 			ServerStreams: method.IsStreamingServer(),
 			ClientStreams: method.IsStreamingClient(),
 		}
@@ -161,51 +102,6 @@ func call(ctx context.Context, args callArgs) error {
 	}
 
 	return nil
-
-	// scan := bufio.NewScanner(os.Stdin)
-	//
-	// if method.IsStreamingClient() {
-	// 	for scan.Scan() {
-	// 		inputBytes := scan.Bytes()
-	//
-	// 		input := dynamicpb.NewMessage(method.Input())
-	// 		if err := protojson.Unmarshal(inputBytes, input); err != nil {
-	// 			return err
-	// 		}
-	//
-	// 		output := dynamicpb.NewMessage(method.Output())
-	// 		if err := cc.Invoke(ctx, methodInvokeName(args.Method), input, output); err != nil {
-	// 			return err
-	// 		}
-	//
-	// 		outputBytes, err := protojson.Marshal(output)
-	// 		if err != nil {
-	// 			return err
-	// 		}
-	//
-	// 		fmt.Println(string(outputBytes))
-	// 	}
-	// } else {
-	// 	scan.Scan()
-	// 	inputBytes := scan.Bytes()
-	//
-	// 	input := dynamicpb.NewMessage(method.Input())
-	// 	if err := protojson.Unmarshal(inputBytes, input); err != nil {
-	// 		return err
-	// 	}
-	//
-	// 	output := dynamicpb.NewMessage(method.Output())
-	// 	if err := cc.Invoke(ctx, methodInvokeName(args.Method), input, output); err != nil {
-	// 		return err
-	// 	}
-	//
-	// 	outputBytes, err := protojson.Marshal(output)
-	// 	if err != nil {
-	// 		return err
-	// 	}
-	//
-	// 	fmt.Println(string(outputBytes))
-	// }
 }
 
 func listMethods(ctx context.Context, args callArgs) error {
@@ -361,27 +257,3 @@ func unaryInvoke(ctx context.Context, cc *grpc.ClientConn, method protoreflect.M
 	fmt.Println(string(outputBytes))
 	return nil
 }
-
-// func sendMessages(ctx context.Context, cc *grpc.ClientConn, method protoreflect.MethodDescriptor) error {
-// 	name := methodInvokeName(string(method.FullName()))
-//
-// 	if method.IsStreamingClient() {
-// 		scanner := bufio.NewScanner(os.Stdin)
-// 	}
-//
-// 	in, err := ioutil.ReadAll(os.Stdin)
-// 	if err != nil {
-// 		return err
-// 	}
-//
-// 	msg := dynamicpb.NewMessage(method.Input())
-// 	if err := protojson.Unmarshal(in, msg); err != nil {
-// 		return err
-// 	}
-//
-// 	if err := cc.Invoke(ctx, name, msg); err != nil {
-// 		return err
-// 	}
-//
-// 	return nil
-// }
