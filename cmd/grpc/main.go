@@ -21,90 +21,88 @@ import (
 	"google.golang.org/protobuf/types/dynamicpb"
 )
 
-func main() {
-	cli.Run(context.Background(), call)
-}
-
-type callArgs struct {
+type args struct {
 	Target string `cli:"target"`
 	Method string `cli:"method"`
 	Long   bool   `cli:"-l,--long" usage:"if method is 'ls', output methods in long format"`
 }
 
-func call(ctx context.Context, args callArgs) error {
-	if args.Method == "ls" {
-		return listMethods(ctx, args)
-	}
-
-	cc, err := grpc.Dial(args.Target, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		return fmt.Errorf("dial: %w", err)
-	}
-
-	client, err := grpc_reflection_v1alpha.NewServerReflectionClient(cc).ServerReflectionInfo(ctx)
-	if err != nil {
-		return fmt.Errorf("start reflection info client: %w", err)
-	}
-
-	method, err := getMethod(ctx, client, args.Method)
-	if err != nil {
-		return err
-	}
-
-	if !method.IsStreamingClient() && !method.IsStreamingServer() {
-		if err := unaryInvoke(ctx, cc, method); err != nil {
-			return err
-		}
-	} else {
-		streamDesc := grpc.StreamDesc{
-			ServerStreams: method.IsStreamingServer(),
-			ClientStreams: method.IsStreamingClient(),
+func main() {
+	cli.Run(context.Background(), func(ctx context.Context, args args) error {
+		if args.Method == "ls" {
+			return listMethods(ctx, args)
 		}
 
-		stream, err := cc.NewStream(ctx, &streamDesc, methodInvokeName(string(method.FullName())))
+		cc, err := grpc.Dial(args.Target, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		if err != nil {
+			return fmt.Errorf("dial: %w", err)
+		}
+
+		client, err := grpc_reflection_v1alpha.NewServerReflectionClient(cc).ServerReflectionInfo(ctx)
+		if err != nil {
+			return fmt.Errorf("start reflection info client: %w", err)
+		}
+
+		method, err := getMethod(ctx, client, args.Method)
 		if err != nil {
 			return err
 		}
 
-		scan := bufio.NewScanner(os.Stdin)
-		for scan.Scan() {
-			msgIn := dynamicpb.NewMessage(method.Input())
-			if err := protojson.Unmarshal(scan.Bytes(), msgIn); err != nil {
+		if !method.IsStreamingClient() && !method.IsStreamingServer() {
+			if err := unaryInvoke(ctx, cc, method); err != nil {
 				return err
 			}
-
-			if err := stream.SendMsg(msgIn); err != nil {
-				return err
-			}
-		}
-
-		if err := stream.CloseSend(); err != nil {
-			return err
-		}
-
-		for {
-			msgOut := dynamicpb.NewMessage(method.Output())
-			if err := stream.RecvMsg(msgOut); err != nil {
-				if err == io.EOF {
-					break
-				}
-
-				return err
+		} else {
+			streamDesc := grpc.StreamDesc{
+				ServerStreams: method.IsStreamingServer(),
+				ClientStreams: method.IsStreamingClient(),
 			}
 
-			outputBytes, err := protojson.Marshal(msgOut)
+			stream, err := cc.NewStream(ctx, &streamDesc, methodInvokeName(string(method.FullName())))
 			if err != nil {
 				return err
 			}
 
-			fmt.Println(string(outputBytes))
-		}
-	}
+			scan := bufio.NewScanner(os.Stdin)
+			for scan.Scan() {
+				msgIn := dynamicpb.NewMessage(method.Input())
+				if err := protojson.Unmarshal(scan.Bytes(), msgIn); err != nil {
+					return err
+				}
 
-	return nil
+				if err := stream.SendMsg(msgIn); err != nil {
+					return err
+				}
+			}
+
+			if err := stream.CloseSend(); err != nil {
+				return err
+			}
+
+			for {
+				msgOut := dynamicpb.NewMessage(method.Output())
+				if err := stream.RecvMsg(msgOut); err != nil {
+					if err == io.EOF {
+						break
+					}
+
+					return err
+				}
+
+				outputBytes, err := protojson.Marshal(msgOut)
+				if err != nil {
+					return err
+				}
+
+				fmt.Println(string(outputBytes))
+			}
+		}
+
+		return nil
+	})
 }
 
-func listMethods(ctx context.Context, args callArgs) error {
+func listMethods(ctx context.Context, args args) error {
 	cc, err := grpc.Dial(args.Target, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return fmt.Errorf("dial: %w", err)
