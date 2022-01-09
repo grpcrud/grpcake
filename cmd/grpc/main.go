@@ -18,9 +18,10 @@ import (
 )
 
 type args struct {
-	Target string `cli:"target"`
-	Method string `cli:"method"`
-	Long   bool   `cli:"-l,--long" usage:"if method is 'ls', output methods in long format"`
+	Target   string   `cli:"target"`
+	Method   string   `cli:"method"`
+	Long     bool     `cli:"-l,--long" usage:"if method is 'ls', output methods in long format"`
+	Protoset []string `cli:"--protoset"`
 }
 
 func main() {
@@ -30,7 +31,8 @@ func main() {
 			return fmt.Errorf("dial: %w", err)
 		}
 
-		msrc, err := newReflectMethodSource(ctx, cc)
+		// msrc, err := newReflectMethodSource(ctx, cc)
+		msrc, err := newProtosetMethodSource(args.Protoset)
 		if err != nil {
 			return err
 		}
