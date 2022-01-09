@@ -12,12 +12,8 @@ import (
 	"github.com/ucarion/cli"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/reflection/grpc_reflection_v1alpha"
 	"google.golang.org/protobuf/encoding/protojson"
-	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/reflect/protodesc"
 	"google.golang.org/protobuf/reflect/protoreflect"
-	"google.golang.org/protobuf/types/descriptorpb"
 	"google.golang.org/protobuf/types/dynamicpb"
 )
 
@@ -29,206 +25,106 @@ type args struct {
 
 func main() {
 	cli.Run(context.Background(), func(ctx context.Context, args args) error {
-		if args.Method == "ls" {
-			return listMethods(ctx, args)
-		}
-
 		cc, err := grpc.Dial(args.Target, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		if err != nil {
 			return fmt.Errorf("dial: %w", err)
 		}
 
-		client, err := grpc_reflection_v1alpha.NewServerReflectionClient(cc).ServerReflectionInfo(ctx)
-		if err != nil {
-			return fmt.Errorf("start reflection info client: %w", err)
-		}
-
-		method, err := getMethod(ctx, client, args.Method)
+		msrc, err := newReflectMethodSource(ctx, cc)
 		if err != nil {
 			return err
 		}
 
-		if !method.IsStreamingClient() && !method.IsStreamingServer() {
-			if err := unaryInvoke(ctx, cc, method); err != nil {
-				return err
-			}
-		} else {
-			streamDesc := grpc.StreamDesc{
-				ServerStreams: method.IsStreamingServer(),
-				ClientStreams: method.IsStreamingClient(),
-			}
-
-			stream, err := cc.NewStream(ctx, &streamDesc, methodInvokeName(string(method.FullName())))
-			if err != nil {
-				return err
-			}
-
-			scan := bufio.NewScanner(os.Stdin)
-			for scan.Scan() {
-				msgIn := dynamicpb.NewMessage(method.Input())
-				if err := protojson.Unmarshal(scan.Bytes(), msgIn); err != nil {
-					return err
-				}
-
-				if err := stream.SendMsg(msgIn); err != nil {
-					return err
-				}
-			}
-
-			if err := stream.CloseSend(); err != nil {
-				return err
-			}
-
-			for {
-				msgOut := dynamicpb.NewMessage(method.Output())
-				if err := stream.RecvMsg(msgOut); err != nil {
-					if err == io.EOF {
-						break
-					}
-
-					return err
-				}
-
-				outputBytes, err := protojson.Marshal(msgOut)
-				if err != nil {
-					return err
-				}
-
-				fmt.Println(string(outputBytes))
-			}
+		if args.Method == "ls" {
+			return listMethods(msrc, args)
 		}
 
-		return nil
+		return invokeMethod(ctx, cc, msrc, args)
 	})
 }
 
-func listMethods(ctx context.Context, args args) error {
-	cc, err := grpc.Dial(args.Target, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		return fmt.Errorf("dial: %w", err)
-	}
-
-	client, err := grpc_reflection_v1alpha.NewServerReflectionClient(cc).ServerReflectionInfo(ctx)
-	if err != nil {
-		return fmt.Errorf("start reflection info client: %w", err)
-	}
-
-	if err := client.Send(&grpc_reflection_v1alpha.ServerReflectionRequest{
-		// todo host
-		MessageRequest: &grpc_reflection_v1alpha.ServerReflectionRequest_ListServices{},
-	}); err != nil {
-		return fmt.Errorf("send ListServices: %w", err)
-	}
-
-	res, err := client.Recv()
-	if err != nil {
-		return fmt.Errorf("recv ListServices: %w", err)
-	}
-
-	var svcs []string
-	var fds descriptorpb.FileDescriptorSet
-	listSvcRes := res.MessageResponse.(*grpc_reflection_v1alpha.ServerReflectionResponse_ListServicesResponse)
-	for _, svc := range listSvcRes.ListServicesResponse.Service {
-		svcs = append(svcs, svc.Name)
-		files, err := getFilesForSymbol(ctx, client, svc.Name)
-		if err != nil {
-			return err
-		}
-
-		for _, f := range files {
-			var fd descriptorpb.FileDescriptorProto
-			if err := proto.Unmarshal(f, &fd); err != nil {
-				return err
-			}
-
-			fds.File = append(fds.File, &fd)
-		}
-	}
-
-	reg, err := protodesc.NewFiles(&fds)
+func listMethods(msrc methodSource, args args) error {
+	methods, err := msrc.Methods()
 	if err != nil {
 		return err
 	}
 
-	for _, svc := range svcs {
-		d, err := reg.FindDescriptorByName(protoreflect.FullName(svc))
-		if err != nil {
-			return err
-		}
-
-		methods := d.(protoreflect.ServiceDescriptor).Methods()
-		for i, l := 0, methods.Len(); i < l; i++ {
-			m := methods.Get(i)
-			if args.Long {
-				var streamClient string
-				if m.IsStreamingClient() {
-					streamClient = "stream "
-				}
-
-				var streamServer string
-				if m.IsStreamingServer() {
-					streamServer = "stream "
-				}
-
-				fmt.Printf("rpc %s(%s%s) returns (%s%s)\n", m.FullName(), streamClient, m.Input().FullName(), streamServer, m.Output().FullName())
-			} else {
-				fmt.Println(m.FullName())
+	for _, m := range methods {
+		if args.Long {
+			var streamClient string
+			if m.IsStreamingClient() {
+				streamClient = "stream "
 			}
+
+			var streamServer string
+			if m.IsStreamingServer() {
+				streamServer = "stream "
+			}
+
+			fmt.Printf("rpc %s(%s%s) returns (%s%s)\n", m.FullName(), streamClient, m.Input().FullName(), streamServer, m.Output().FullName())
+		} else {
+			fmt.Println(m.FullName())
 		}
 	}
 
 	return nil
 }
 
-func getFilesForSymbol(ctx context.Context, client grpc_reflection_v1alpha.ServerReflection_ServerReflectionInfoClient, symbol string) ([][]byte, error) {
-	if err := client.Send(&grpc_reflection_v1alpha.ServerReflectionRequest{
-		MessageRequest: &grpc_reflection_v1alpha.ServerReflectionRequest_FileContainingSymbol{
-			FileContainingSymbol: symbol,
-		},
-	}); err != nil {
-		return nil, fmt.Errorf("send FileContainingSymbol: %w", err)
-	}
-
-	res, err := client.Recv()
+func invokeMethod(ctx context.Context, cc *grpc.ClientConn, msrc methodSource, args args) error {
+	method, err := msrc.Method(protoreflect.FullName(args.Method))
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return res.MessageResponse.(*grpc_reflection_v1alpha.ServerReflectionResponse_FileDescriptorResponse).FileDescriptorResponse.FileDescriptorProto, nil
-}
+	if !method.IsStreamingClient() && !method.IsStreamingServer() {
+		return unaryInvoke(ctx, cc, method)
+	}
 
-func getMethod(ctx context.Context, client grpc_reflection_v1alpha.ServerReflection_ServerReflectionInfoClient, name string) (protoreflect.MethodDescriptor, error) {
-	files, err := getFilesForSymbol(ctx, client, name)
+	streamDesc := grpc.StreamDesc{
+		ServerStreams: method.IsStreamingServer(),
+		ClientStreams: method.IsStreamingClient(),
+	}
+
+	stream, err := cc.NewStream(ctx, &streamDesc, methodInvokeName(string(method.FullName())))
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	var fds descriptorpb.FileDescriptorSet
-	for _, f := range files {
-		var fd descriptorpb.FileDescriptorProto
-		if err := proto.Unmarshal(f, &fd); err != nil {
-			return nil, err
+	scan := bufio.NewScanner(os.Stdin)
+	for scan.Scan() {
+		msgIn := dynamicpb.NewMessage(method.Input())
+		if err := protojson.Unmarshal(scan.Bytes(), msgIn); err != nil {
+			return err
 		}
 
-		fds.File = append(fds.File, &fd)
+		if err := stream.SendMsg(msgIn); err != nil {
+			return err
+		}
 	}
 
-	reg, err := protodesc.NewFiles(&fds)
-	if err != nil {
-		return nil, err
+	if err := stream.CloseSend(); err != nil {
+		return err
 	}
 
-	d, err := reg.FindDescriptorByName(protoreflect.FullName(name))
-	if err != nil {
-		return nil, err
+	for {
+		msgOut := dynamicpb.NewMessage(method.Output())
+		if err := stream.RecvMsg(msgOut); err != nil {
+			if err == io.EOF {
+				break
+			}
+
+			return err
+		}
+
+		outputBytes, err := protojson.Marshal(msgOut)
+		if err != nil {
+			return err
+		}
+
+		fmt.Println(string(outputBytes))
 	}
 
-	return d.(protoreflect.MethodDescriptor), nil
-}
-
-func methodInvokeName(name string) string {
-	i := strings.LastIndexByte(name, '.')
-	return "/" + name[:i] + "/" + name[i+1:]
+	return nil
 }
 
 func unaryInvoke(ctx context.Context, cc *grpc.ClientConn, method protoreflect.MethodDescriptor) error {
@@ -254,4 +150,9 @@ func unaryInvoke(ctx context.Context, cc *grpc.ClientConn, method protoreflect.M
 
 	fmt.Println(string(outputBytes))
 	return nil
+}
+
+func methodInvokeName(name string) string {
+	i := strings.LastIndexByte(name, '.')
+	return "/" + name[:i] + "/" + name[i+1:]
 }

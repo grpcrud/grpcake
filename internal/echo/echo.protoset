@@ -1,0 +1,21 @@
+
+æ
+google/protobuf/empty.protogoogle.protobuf"
+EmptyB}
+com.google.protobufB
+EmptyProtoPZ.google.golang.org/protobuf/types/known/emptypb¯¢GPB™Google.Protobuf.WellKnownTypesbproto3
+ı
+
+echo.protoechogoogle/protobuf/empty.proto"!
+PingMessage
+pong (Rpong"'
+EchoMessage
+message (	Rmessage"$
+CountMessage
+count (Rcount2ù
+Echo1
+Ping.google.protobuf.Empty.echo.PingMessage,
+Echo.echo.EchoMessage.echo.EchoMessage;
+ClientStreamEcho.echo.EchoMessage.echo.CountMessage(;
+ServerStreamEcho.echo.CountMessage.echo.EchoMessage0:
+BidiStreamEcho.echo.EchoMessage.echo.EchoMessage(0B*Z(github.com/grpcrud/grpcake/internal/echobproto3
