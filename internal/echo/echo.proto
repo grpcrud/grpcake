@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package echo;
+
+option go_package = "github.com/grpcrud/grpcake/internal/echo";
+
+import "google/protobuf/empty.proto";
+
+service Echo {
+  rpc Ping(google.protobuf.Empty) returns (PingMessage);
+  rpc Echo(EchoMessage) returns (EchoMessage);
+
+  rpc ClientStreamEcho(stream EchoMessage) returns (CountMessage);
+  rpc ServerStreamEcho(CountMessage) returns (stream EchoMessage);
+  rpc BidiStreamEcho(stream EchoMessage) returns (stream EchoMessage);
+}
+
+message PingMessage {
+  bool pong = 1;
+}
+
+message EchoMessage {
+  string message = 1;
+}
+
+message CountMessage {
+  int32 count = 1;
+}
