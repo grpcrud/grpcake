@@ -20,7 +20,7 @@ import (
 type args struct {
 	Target     string   `cli:"target"`
 	Method     string   `cli:"method"`
-	Long       bool     `cli:"-l,--long" usage:"if method is 'ls', output methods in long format; method being 'll' is a shorthand for 'ls -l''"`
+	Long       bool     `cli:"-l,--long" usage:"if method is 'ls', output methods in long format; method being 'll' is a shorthand for 'ls -l'"`
 	Protoset   []string `cli:"--protoset"`
 	ProtoPath  []string `cli:"-I,--proto-path"`
 	SchemaFrom string   `cli:"--schema-from"`
