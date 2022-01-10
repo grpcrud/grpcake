@@ -18,10 +18,11 @@ import (
 )
 
 type args struct {
-	Target   string   `cli:"target"`
-	Method   string   `cli:"method"`
-	Long     bool     `cli:"-l,--long" usage:"if method is 'ls', output methods in long format"`
-	Protoset []string `cli:"--protoset"`
+	Target    string   `cli:"target"`
+	Method    string   `cli:"method"`
+	Long      bool     `cli:"-l,--long" usage:"if method is 'ls', output methods in long format"`
+	Protoset  []string `cli:"--protoset"`
+	ProtoPath []string `cli:"-I,--proto-path"`
 }
 
 func main() {
@@ -32,7 +33,8 @@ func main() {
 		}
 
 		// msrc, err := newReflectMethodSource(ctx, cc)
-		msrc, err := newProtosetMethodSource(args.Protoset)
+		// msrc, err := newProtosetMethodSource(args.Protoset)
+		msrc, err := newProtopathMethodSource(ctx, args.ProtoPath)
 		if err != nil {
 			return err
 		}

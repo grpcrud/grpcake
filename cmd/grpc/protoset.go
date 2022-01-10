@@ -74,4 +74,3 @@ func (p protosetMethodSource) Method(name protoreflect.FullName) (protoreflect.M
 func (p protosetMethodSource) Close() error {
 	return nil
 }
-
