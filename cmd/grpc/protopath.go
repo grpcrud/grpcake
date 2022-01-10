@@ -17,7 +17,7 @@ type protopathMethodSource struct {
 
 func newProtopathMethodSource(ctx context.Context, protopath []string) (protopathMethodSource, error) {
 	if len(protopath) == 0 {
-		return protopathMethodSource{}, fmt.Errorf("proto paths list cannot be empty")
+		return protopathMethodSource{}, fmt.Errorf("--proto-path cannot be empty")
 	}
 
 	var protoFile string
@@ -34,7 +34,7 @@ func newProtopathMethodSource(ctx context.Context, protopath []string) (protopat
 	}
 
 	if protoFile == "" {
-		return protopathMethodSource{}, fmt.Errorf("cannot find any .proto files in proto paths list")
+		return protopathMethodSource{}, fmt.Errorf("cannot find any .proto files in --proto-path")
 	}
 
 	f, err := os.CreateTemp("", "protoset")

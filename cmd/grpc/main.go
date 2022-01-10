@@ -20,10 +20,59 @@ import (
 type args struct {
 	Target     string   `cli:"target"`
 	Method     string   `cli:"method"`
-	Long       bool     `cli:"-l,--long" usage:"if method is 'ls', output methods in long format; method being 'll' is a shorthand for 'ls -l'"`
-	Protoset   []string `cli:"--protoset"`
-	ProtoPath  []string `cli:"-I,--proto-path"`
-	SchemaFrom string   `cli:"--schema-from"`
+	Long       bool     `cli:"-l,--long" usage:"if listing methods, output in long format"`
+	Protoset   []string `cli:"--protoset" value:"file" usage:"get schema from .protoset file(s); can be provided multiple times"`
+	ProtoPath  []string `cli:"-I,--proto-path" value:"path" usage:"get schema from .proto files; can be provided multiple times"`
+	SchemaFrom string   `cli:"--schema-from" value:"protoset|proto-path|reflection" usage:"where to get schema from; default is to choose based on provided flags"`
+}
+
+func (_ *args) ExtendedDescription() string {
+	return strings.TrimSpace(`
+Call a gRPC method on a server, or list methods available on the server.
+
+"target" must be in the syntax supported by the gRPC name resolution system:
+
+	https://github.com/grpc/grpc/blob/master/doc/naming.md
+
+Examples of valid "target" values include:
+
+	localhost:80
+	example.com:443
+	dns:example.com:443
+	unix:path/to/socket
+
+"method" must be of the syntax "package.service.method", such as:
+
+	routeguide.RouteGuide.GetFeature
+
+The following two method values are special-cased:
+
+	ls
+	ll
+
+Passing "ls" for as the "method" will list all methods available on the server.
+"ll" is like "ls", but also implies "--long", which produces information on the
+input and output types of the methods.
+
+Calling a gRPC method is only possible if you know the schema of that method. To
+that end, there are three ways this tool can discover a schema:
+
+1. Using the gRPC reflection API. This is the default, but will not work if the
+server does not have the reflection API registered.
+
+2. Using ".protoset" file(s). This is the default if "--protoset" is provided at
+least once. This works like protoc's "--descriptor_set_in" option. 
+
+3. Using ".proto" file(s). This is the default if "--proto" (alias: "-I") is
+provided at least once. This works like protoc's "-I"/"--proto_path" option.
+
+You can force which of these strategies to choose by passing the "--schema-from"
+option.
+
+When using ".protoset" or ".proto" files to infer a schema, it's not possible to
+tell what methods the server actually has registered at runtime. Instead, all
+methods in the set of protobuf data are listed.
+`)
 }
 
 func main() {
