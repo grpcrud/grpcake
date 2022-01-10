@@ -18,11 +18,12 @@ import (
 )
 
 type args struct {
-	Target    string   `cli:"target"`
-	Method    string   `cli:"method"`
-	Long      bool     `cli:"-l,--long" usage:"if method is 'ls', output methods in long format"`
-	Protoset  []string `cli:"--protoset"`
-	ProtoPath []string `cli:"-I,--proto-path"`
+	Target     string   `cli:"target"`
+	Method     string   `cli:"method"`
+	Long       bool     `cli:"-l,--long" usage:"if method is 'ls', output methods in long format"`
+	Protoset   []string `cli:"--protoset"`
+	ProtoPath  []string `cli:"-I,--proto-path"`
+	SchemaFrom string   `cli:"--schema-from"`
 }
 
 func main() {
@@ -32,9 +33,29 @@ func main() {
 			return fmt.Errorf("dial: %w", err)
 		}
 
-		// msrc, err := newReflectMethodSource(ctx, cc)
-		// msrc, err := newProtosetMethodSource(args.Protoset)
-		msrc, err := newProtopathMethodSource(ctx, args.ProtoPath)
+		if args.SchemaFrom == "" {
+			switch {
+			case len(args.Protoset) != 0:
+				args.SchemaFrom = "protoset"
+			case len(args.ProtoPath) != 0:
+				args.SchemaFrom = "proto-path"
+			default:
+				args.SchemaFrom = "reflection"
+			}
+		}
+
+		var msrc methodSource
+		switch args.SchemaFrom {
+		case "protoset":
+			msrc, err = newProtosetMethodSource(args.Protoset)
+		case "proto-path":
+			msrc, err = newProtopathMethodSource(ctx, args.ProtoPath)
+		case "reflection":
+			msrc, err = newReflectMethodSource(ctx, cc)
+		default:
+			return fmt.Errorf("invalid --schema-from: %s", args.SchemaFrom)
+		}
+
 		if err != nil {
 			return err
 		}
