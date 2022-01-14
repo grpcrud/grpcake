@@ -72,6 +72,13 @@ option.
 When using ".protoset" or ".proto" files to infer a schema, it's not possible to
 tell what methods the server actually has registered at runtime. Instead, all
 methods in the set of protobuf data are listed.
+
+When using ".proto" files to infer a schema, all of the ".proto" files specified
+have to be compiled by protoc into a ".protoset" file internally; generating the
+".protoset" file yourself may perform better than having gRPCake doing it each
+time. You can create ".protoset" files by running:
+
+	protoc --descriptor_set_out xxx.protoset --include_imports ...
 `)
 }
 

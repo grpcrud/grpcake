@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -20,20 +19,17 @@ func newProtopathMethodSource(ctx context.Context, protopath []string) (protopat
 		return protopathMethodSource{}, fmt.Errorf("--proto-path cannot be empty")
 	}
 
-	var protoFile string
+	var protoFiles []string
 	for _, p := range protopath {
-		f, err := findArbitraryProtoFile(p)
+		files, err := findAllProtoFiles(p)
 		if err != nil {
 			return protopathMethodSource{}, err
 		}
 
-		if f != "" {
-			protoFile = f
-			break
-		}
+		protoFiles = append(protoFiles, files...)
 	}
 
-	if protoFile == "" {
+	if len(protoFiles) == 0 {
 		return protopathMethodSource{}, fmt.Errorf("cannot find any .proto files in --proto-path")
 	}
 
@@ -49,7 +45,8 @@ func newProtopathMethodSource(ctx context.Context, protopath []string) (protopat
 		args = append(args, "-I", p)
 	}
 
-	args = append(args, "--descriptor_set_out", f.Name(), "--include_imports", protoFile)
+	args = append(args, "--descriptor_set_out", f.Name(), "--include_imports")
+	args = append(args, protoFiles...)
 
 	cmd := exec.CommandContext(ctx, "protoc", args...)
 	cmd.Stdout = os.Stdout
@@ -67,10 +64,8 @@ func newProtopathMethodSource(ctx context.Context, protopath []string) (protopat
 	return protopathMethodSource{protosetMethodSource: msrc}, nil
 }
 
-var stopWalkDir = errors.New("protopath: stop walk dir")
-
-func findArbitraryProtoFile(path string) (string, error) {
-	var out string
+func findAllProtoFiles(path string) ([]string, error) {
+	var out []string
 	err := filepath.WalkDir(path, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -81,16 +76,37 @@ func findArbitraryProtoFile(path string) (string, error) {
 		}
 
 		if strings.HasSuffix(path, ".proto") {
-			out = path
-			return stopWalkDir
+			out = append(out, path)
 		}
 
 		return nil
 	})
 
-	if err != nil && err != stopWalkDir {
-		return "", err
-	}
-
-	return out, nil
+	return out, err
 }
+
+// func findArbitraryProtoFile(path string) (string, error) {
+// 	var out string
+// 	err := filepath.WalkDir(path, func(path string, d fs.DirEntry, err error) error {
+// 		if err != nil {
+// 			return err
+// 		}
+//
+// 		if d.IsDir() {
+// 			return nil
+// 		}
+//
+// 		if strings.HasSuffix(path, ".proto") {
+// 			out = path
+// 			return stopWalkDir
+// 		}
+//
+// 		return nil
+// 	})
+//
+// 	if err != nil && err != stopWalkDir {
+// 		return "", err
+// 	}
+//
+// 	return out, nil
+// }
