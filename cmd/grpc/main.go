@@ -84,7 +84,8 @@ time. You can create ".protoset" files by running:
 
 func main() {
 	cli.Run(context.Background(), func(ctx context.Context, args args) error {
-		cc, err := grpc.Dial(args.Target, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		target := parseTarget(args.Target)
+		cc, err := grpc.Dial(target, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		if err != nil {
 			return fmt.Errorf("dial: %w", err)
 		}
