@@ -11,7 +11,7 @@ import (
 
 	"github.com/ucarion/cli"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/dynamicpb"
@@ -84,8 +84,13 @@ time. You can create ".protoset" files by running:
 
 func main() {
 	cli.Run(context.Background(), func(ctx context.Context, args args) error {
+		creds, err := credentials.NewClientTLSFromFile("internal/echoserver/server1_cert.pem", "x.test.example.com")
+		if err != nil {
+			return err
+		}
+
 		target := parseTarget(args.Target)
-		cc, err := grpc.Dial(target, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		cc, err := grpc.Dial(target, grpc.WithTransportCredentials(creds))
 		if err != nil {
 			return fmt.Errorf("dial: %w", err)
 		}

@@ -5,3 +5,7 @@ echoserver-protos:
 .PHONY: echoserver
 echoserver:
 	go run ./internal/echoserver/...
+
+.PHONY: echoserver-tls
+echoserver-tls:
+	go run ./internal/echoserver/... -tls

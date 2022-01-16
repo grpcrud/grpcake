@@ -2,23 +2,38 @@ package main
 
 import (
 	"context"
+	"flag"
 	"io"
 	"net"
 	"strconv"
 
 	"github.com/grpcrud/grpcake/internal/echo"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 func main() {
-	l, err := net.Listen("tcp", "localhost:8080")
+	tls := flag.Bool("tls", false, "serve over tls")
+	flag.Parse()
+
+	var opts []grpc.ServerOption
+	if *tls {
+		creds, err := credentials.NewServerTLSFromFile("internal/echoserver/server1_cert.pem", "internal/echoserver/server1_key.pem")
+		if err != nil {
+			panic(err)
+		}
+
+		opts = append(opts, grpc.Creds(creds))
+	}
+
+	l, err := net.Listen("tcp", "localhost:50051")
 	if err != nil {
 		panic(err)
 	}
 
-	s := grpc.NewServer()
+	s := grpc.NewServer(opts...)
 	echo.RegisterEchoServer(s, server{})
 	reflection.Register(s)
 
