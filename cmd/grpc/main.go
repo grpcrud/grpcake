@@ -26,65 +26,9 @@ type args struct {
 	SchemaFrom string   `cli:"--schema-from" value:"protoset|proto-path|reflection" usage:"where to get schema from; default is to choose based on provided flags"`
 }
 
-func (_ *args) ExtendedDescription() string {
-	return strings.TrimSpace(`
-Call a gRPC method on a server, or list methods available on the server.
-
-"target" must be in the syntax supported by the gRPC name resolution system:
-
-	https://github.com/grpc/grpc/blob/master/doc/naming.md
-
-Examples of valid "target" values include:
-
-	localhost:80
-	example.com:443
-	dns:example.com:443
-	unix:path/to/socket
-
-"method" must be of the syntax "package.service.method", such as:
-
-	routeguide.RouteGuide.GetFeature
-
-The following two method values are special-cased:
-
-	ls
-	ll
-
-Passing "ls" for as the "method" will list all methods available on the server.
-"ll" is like "ls", but also implies "--long", which produces information on the
-input and output types of the methods.
-
-Calling a gRPC method is only possible if you know the schema of that method. To
-that end, there are three ways this tool can discover a schema:
-
-1. Using the gRPC reflection API. This is the default, but will not work if the
-server does not have the reflection API registered.
-
-2. Using ".protoset" file(s). This is the default if "--protoset" is provided at
-least once. This works like protoc's "--descriptor_set_in" option. 
-
-3. Using ".proto" file(s). This is the default if "--proto" (alias: "-I") is
-provided at least once. This works like protoc's "-I"/"--proto_path" option.
-
-You can force which of these strategies to choose by passing the "--schema-from"
-option.
-
-When using ".protoset" or ".proto" files to infer a schema, it's not possible to
-tell what methods the server actually has registered at runtime. Instead, all
-methods in the set of protobuf data are listed.
-
-When using ".proto" files to infer a schema, all of the ".proto" files specified
-have to be compiled by protoc into a ".protoset" file internally; generating the
-".protoset" file yourself may perform better than having gRPCake doing it each
-time. You can create ".protoset" files by running:
-
-	protoc --descriptor_set_out xxx.protoset --include_imports ...
-`)
-}
-
 func main() {
 	cli.Run(context.Background(), func(ctx context.Context, args args) error {
-		creds, err := credentials.NewClientTLSFromFile("internal/echoserver/server1_cert.pem", "x.test.example.com")
+		creds, err := credentials.NewClientTLSFromFile("internal/echoserver/server.crt", "grpcake-test-server")
 		if err != nil {
 			return err
 		}

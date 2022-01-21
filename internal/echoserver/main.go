@@ -15,12 +15,14 @@ import (
 )
 
 func main() {
-	tls := flag.Bool("tls", false, "serve over tls")
+	serverTLS := flag.Bool("server-tls", false, "serve over tls")
+	serverCertFile := flag.String("server-cert-file", "", "server cert file")
+	serverKeyFile := flag.String("server-key-file", "", "server key file")
 	flag.Parse()
 
 	var opts []grpc.ServerOption
-	if *tls {
-		creds, err := credentials.NewServerTLSFromFile("internal/echoserver/server1_cert.pem", "internal/echoserver/server1_key.pem")
+	if *serverTLS {
+		creds, err := credentials.NewServerTLSFromFile(*serverCertFile, *serverKeyFile)
 		if err != nil {
 			panic(err)
 		}

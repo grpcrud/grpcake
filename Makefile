@@ -9,3 +9,7 @@ echoserver:
 .PHONY: echoserver-tls
 echoserver-tls:
 	go run ./internal/echoserver/... -tls
+
+.PHONY: echoserver-certs
+echoserver-certs:
+	cd internal/echoserver &&
