@@ -8,10 +8,10 @@ server.key:
 	openssl genrsa -out server.key 4096
 
 server.csr: server.key
-	openssl req -new -key server.key -subj "/CN=grpcake-test-server" -out server.csr
+	openssl req -new -key server.key -subj "/CN=grpcake-test-server" -config openssl.conf -reqexts server -out server.csr
 
 server.crt: server.csr server-ca.crt server-ca.key
-	openssl x509 -req -in server.csr -CA server-ca.crt -CAkey server-ca.key -set_serial 1 -out server.crt -days 365
+	openssl x509 -req -in server.csr -CA server-ca.crt -CAkey server-ca.key -set_serial 1 -out server.crt -days 365 -extfile openssl.conf -extensions server
 
 client-ca.key:
 	openssl genrsa -out client-ca.key 4096

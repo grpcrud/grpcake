@@ -28,7 +28,7 @@ type args struct {
 
 func main() {
 	cli.Run(context.Background(), func(ctx context.Context, args args) error {
-		creds, err := credentials.NewClientTLSFromFile("internal/echoserver/server.crt", "grpcake-test-server")
+		creds, err := credentials.NewClientTLSFromFile("internal/echoserver/server.crt", "grpcake-test-server.example.com")
 		if err != nil {
 			return err
 		}
