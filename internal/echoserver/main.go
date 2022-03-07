@@ -2,8 +2,11 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"flag"
 	"io"
+	"io/ioutil"
 	"net"
 	"strconv"
 
@@ -15,27 +18,57 @@ import (
 )
 
 func main() {
+	network := flag.String("network", "tcp", "serve network")
+	addr := flag.String("addr", "localhost:50051", "serve address")
 	serverTLS := flag.Bool("server-tls", false, "serve over tls")
-	serverCertFile := flag.String("server-cert-file", "", "server cert file")
-	serverKeyFile := flag.String("server-key-file", "", "server key file")
+	serverCertFile := flag.String("server-cert-file", "internal/echoserver/server.crt", "server cert file")
+	serverKeyFile := flag.String("server-key-file", "internal/echoserver/server.key", "server key file")
+	clientTLS := flag.Bool("client-tls", false, "require client tls auth")
+	clientCACertFile := flag.String("client-ca-cert-file", "internal/echoserver/client-ca.crt", "client CA cert file")
 	flag.Parse()
 
-	var opts []grpc.ServerOption
+	var tlsConfig tls.Config
+
 	if *serverTLS {
-		creds, err := credentials.NewServerTLSFromFile(*serverCertFile, *serverKeyFile)
+		serverCert, err := tls.LoadX509KeyPair(*serverCertFile, *serverKeyFile)
 		if err != nil {
 			panic(err)
 		}
 
-		opts = append(opts, grpc.Creds(creds))
+		tlsConfig.Certificates = []tls.Certificate{serverCert}
 	}
 
-	l, err := net.Listen("tcp", "localhost:50051")
+	if *clientTLS {
+		var certPool *x509.CertPool
+		if clientCACertFile != nil {
+			certPool = x509.NewCertPool()
+
+			clientCA, err := ioutil.ReadFile(*clientCACertFile)
+			if err != nil {
+				panic(err)
+			}
+
+			if !certPool.AppendCertsFromPEM(clientCA) {
+				panic("could not parse client CA file")
+			}
+		} else {
+			var err error
+			certPool, err = x509.SystemCertPool()
+			if err != nil {
+				panic(err)
+			}
+		}
+
+		tlsConfig.ClientCAs = certPool
+		tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
+	}
+
+	l, err := net.Listen(*network, *addr)
 	if err != nil {
 		panic(err)
 	}
 
-	s := grpc.NewServer(opts...)
+	s := grpc.NewServer(grpc.Creds(credentials.NewTLS(&tlsConfig)))
 	echo.RegisterEchoServer(s, server{})
 	reflection.Register(s)
 

@@ -3,6 +3,8 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -28,13 +30,30 @@ type args struct {
 
 func main() {
 	cli.Run(context.Background(), func(ctx context.Context, args args) error {
-		creds, err := credentials.NewClientTLSFromFile("internal/echoserver/server.crt", "grpcake-test-server.example.com")
+		serverCA, err := ioutil.ReadFile("internal/echoserver/server-ca.crt")
 		if err != nil {
 			return err
 		}
 
+		certPool := x509.NewCertPool()
+		if !certPool.AppendCertsFromPEM(serverCA) {
+			return fmt.Errorf("failed to parse server CA cert")
+		}
+
+		//creds, err := credentials.NewClientTLSFromFile("internal/echoserver/client.crt", "grpcake-test-client.example.com")
+		//if err != nil {
+		//	return err
+		//}
+
+		clientCert, err := tls.LoadX509KeyPair("internal/echoserver/client.crt", "internal/echoserver/client.key")
+		if err != nil {
+			return err
+		}
+
+		tlsConfig := tls.Config{RootCAs: certPool, ServerName: "grpcake-test-server.example.com", Certificates: []tls.Certificate{clientCert}}
+
 		target := parseTarget(args.Target)
-		cc, err := grpc.Dial(target, grpc.WithTransportCredentials(creds))
+		cc, err := grpc.Dial(target, grpc.WithTransportCredentials(credentials.NewTLS(&tlsConfig)))
 		if err != nil {
 			return fmt.Errorf("dial: %w", err)
 		}
