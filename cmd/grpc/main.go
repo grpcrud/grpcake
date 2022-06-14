@@ -28,7 +28,7 @@ type args struct {
 	Protoset       []string `cli:"--protoset" value:"file" usage:"get schema from .protoset file(s); can be provided multiple times"`
 	ProtoPath      []string `cli:"-I,--proto-path" value:"path" usage:"get schema from .proto files; can be provided multiple times"`
 	SchemaFrom     string   `cli:"--schema-from" value:"protoset|proto-path|reflection" usage:"where to get schema from; default is to choose based on provided flags"`
-	Insecure       string   `cli:"--insecure" value:"always|never|auto" usage:"whether to validate TLS; default is auto, which validates TLS if target is not a localhost shorthand"`
+	Insecure       bool     `cli:"--insecure" usage:"disable TLS; default is to validate TLS if target is not a localhost shorthand"`
 	ServerRootCA   []string `cli:"--server-root-ca"`
 	ServerName     string   `cli:"--server-name"`
 	ClientCert     []string `cli:"--client-cert"`
@@ -81,19 +81,15 @@ func main() {
 			Certificates:       certs,
 		}
 
-		useInsecure, err := useInsecure(args)
-		if err != nil {
-			return err
-		}
+		target, isShorthand := parseTarget(args.Target)
 
 		var creds credentials.TransportCredentials
-		if useInsecure {
+		if isShorthand || args.Insecure {
 			creds = insecure.NewCredentials()
 		} else {
 			creds = credentials.NewTLS(&tlsConfig)
 		}
 
-		target := parseTarget(args.Target)
 		cc, err := grpc.Dial(target, grpc.WithTransportCredentials(creds))
 		if err != nil {
 			return fmt.Errorf("dial: %w", err)
@@ -141,20 +137,6 @@ func main() {
 
 		return invokeMethod(ctx, cc, msrc, args)
 	})
-}
-
-func useInsecure(args args) (bool, error) {
-	switch args.Insecure {
-	case "always":
-		return true, nil
-	case "never":
-		return false, nil
-	case "", "auto":
-		_, ok := parseTargetWithShorthand(args.Target)
-		return ok, nil
-	default:
-		return false, fmt.Errorf("--insecure must be one of 'always', 'never', or 'auto'")
-	}
 }
 
 func listMethods(msrc methodSource, args args) error {
