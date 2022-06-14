@@ -26,8 +26,7 @@ type args struct {
 	Method         string   `cli:"method"`
 	Long           bool     `cli:"-l,--long" usage:"if listing methods, output in long format"`
 	Protoset       []string `cli:"--protoset" value:"file" usage:"get schema from .protoset file(s); can be provided multiple times"`
-	ProtoPath      []string `cli:"-I,--proto-path" value:"path" usage:"get schema from .proto files; can be provided multiple times"`
-	SchemaFrom     string   `cli:"--schema-from" value:"protoset|proto-path|reflection" usage:"where to get schema from; default is to choose based on provided flags"`
+	SchemaFrom     string   `cli:"--schema-from" value:"protoset|reflection" usage:"where to get schema from; default is to choose based on provided flags"`
 	Insecure       bool     `cli:"-k,--insecure" usage:"disable TLS; default is to validate TLS if target is not a localhost shorthand"`
 	ServerRootCA   []string `cli:"--server-root-ca"`
 	ServerName     string   `cli:"--server-name"`
@@ -99,8 +98,6 @@ func main() {
 			switch {
 			case len(args.Protoset) != 0:
 				args.SchemaFrom = "protoset"
-			case len(args.ProtoPath) != 0:
-				args.SchemaFrom = "proto-path"
 			default:
 				args.SchemaFrom = "reflection"
 			}
@@ -110,8 +107,6 @@ func main() {
 		switch args.SchemaFrom {
 		case "protoset":
 			msrc, err = newProtosetMethodSource(args.Protoset)
-		case "proto-path":
-			msrc, err = newProtopathMethodSource(ctx, args.ProtoPath)
 		case "reflection":
 			msrc, err = newReflectMethodSource(ctx, cc)
 		default:

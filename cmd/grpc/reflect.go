@@ -12,12 +12,6 @@ import (
 	"google.golang.org/protobuf/types/descriptorpb"
 )
 
-type methodSource interface {
-	Methods() ([]protoreflect.MethodDescriptor, error)
-	Method(protoreflect.FullName) (protoreflect.MethodDescriptor, error)
-	Close() error
-}
-
 type reflectMethodSource struct {
 	client grpc_reflection_v1alpha.ServerReflection_ServerReflectionInfoClient
 }
