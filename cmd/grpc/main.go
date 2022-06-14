@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/ucarion/cli"
+	"golang.org/x/term"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
@@ -21,17 +22,18 @@ import (
 )
 
 type args struct {
-	Target       string   `cli:"target"`
-	Method       string   `cli:"method"`
-	Long         bool     `cli:"-l,--long" usage:"if listing methods, output in long format"`
-	Protoset     []string `cli:"--protoset" value:"file" usage:"get schema from .protoset file(s); can be provided multiple times"`
-	ProtoPath    []string `cli:"-I,--proto-path" value:"path" usage:"get schema from .proto files; can be provided multiple times"`
-	SchemaFrom   string   `cli:"--schema-from" value:"protoset|proto-path|reflection" usage:"where to get schema from; default is to choose based on provided flags"`
-	Insecure     bool     `cli:"--insecure"`
-	ServerRootCA []string `cli:"--server-root-ca"`
-	ServerName   string   `cli:"--server-name"`
-	ClientCert   []string `cli:"--client-cert"`
-	ClientKey    []string `cli:"--client-key"`
+	Target         string   `cli:"target"`
+	Method         string   `cli:"method"`
+	Long           bool     `cli:"-l,--long" usage:"if listing methods, output in long format"`
+	Protoset       []string `cli:"--protoset" value:"file" usage:"get schema from .protoset file(s); can be provided multiple times"`
+	ProtoPath      []string `cli:"-I,--proto-path" value:"path" usage:"get schema from .proto files; can be provided multiple times"`
+	SchemaFrom     string   `cli:"--schema-from" value:"protoset|proto-path|reflection" usage:"where to get schema from; default is to choose based on provided flags"`
+	Insecure       string   `cli:"--insecure" value:"always|never|auto" usage:"whether to validate TLS; default is auto, which validates TLS if target is not a localhost shorthand"`
+	ServerRootCA   []string `cli:"--server-root-ca"`
+	ServerName     string   `cli:"--server-name"`
+	ClientCert     []string `cli:"--client-cert"`
+	ClientKey      []string `cli:"--client-key"`
+	NoWarnStdinTTY bool     `cli:"--no-warn-stdin-tty"`
 }
 
 func main() {
@@ -79,8 +81,13 @@ func main() {
 			Certificates:       certs,
 		}
 
+		useInsecure, err := useInsecure(args)
+		if err != nil {
+			return err
+		}
+
 		var creds credentials.TransportCredentials
-		if args.Insecure { // todo infer this from args (with user override)
+		if useInsecure {
 			creds = insecure.NewCredentials()
 		} else {
 			creds = credentials.NewTLS(&tlsConfig)
@@ -128,8 +135,26 @@ func main() {
 			return listMethods(msrc, args)
 		}
 
+		if !args.NoWarnStdinTTY && term.IsTerminal(int(os.Stdin.Fd())) {
+			_, _ = fmt.Fprintln(os.Stderr, "warning: reading message(s) from stdin (disable this message with --no-warn-stdin-tty)")
+		}
+
 		return invokeMethod(ctx, cc, msrc, args)
 	})
+}
+
+func useInsecure(args args) (bool, error) {
+	switch args.Insecure {
+	case "always":
+		return true, nil
+	case "never":
+		return false, nil
+	case "", "auto":
+		_, ok := parseTargetWithShorthand(args.Target)
+		return ok, nil
+	default:
+		return false, fmt.Errorf("--insecure must be one of 'always', 'never', or 'auto'")
+	}
 }
 
 func listMethods(msrc methodSource, args args) error {
