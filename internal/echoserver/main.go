@@ -13,6 +13,7 @@ import (
 	"github.com/grpcrud/grpcake/internal/echo"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
@@ -20,6 +21,7 @@ import (
 func main() {
 	network := flag.String("network", "tcp", "serve network")
 	addr := flag.String("addr", "localhost:50051", "serve address")
+	insecure_ := flag.Bool("insecure", false, "disable transport security")
 	serverTLS := flag.Bool("server-tls", false, "serve over tls")
 	serverCertFile := flag.String("server-cert-file", "internal/echoserver/server.crt", "server cert file")
 	serverKeyFile := flag.String("server-key-file", "internal/echoserver/server.key", "server key file")
@@ -68,7 +70,14 @@ func main() {
 		panic(err)
 	}
 
-	s := grpc.NewServer(grpc.Creds(credentials.NewTLS(&tlsConfig)))
+	var creds credentials.TransportCredentials
+	if *insecure_ {
+		creds = insecure.NewCredentials()
+	} else {
+		creds = credentials.NewTLS(&tlsConfig)
+	}
+
+	s := grpc.NewServer(grpc.Creds(creds))
 	echo.RegisterEchoServer(s, server{})
 	reflection.Register(s)
 

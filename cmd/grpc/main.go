@@ -14,46 +14,80 @@ import (
 	"github.com/ucarion/cli"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/dynamicpb"
 )
 
 type args struct {
-	Target     string   `cli:"target"`
-	Method     string   `cli:"method"`
-	Long       bool     `cli:"-l,--long" usage:"if listing methods, output in long format"`
-	Protoset   []string `cli:"--protoset" value:"file" usage:"get schema from .protoset file(s); can be provided multiple times"`
-	ProtoPath  []string `cli:"-I,--proto-path" value:"path" usage:"get schema from .proto files; can be provided multiple times"`
-	SchemaFrom string   `cli:"--schema-from" value:"protoset|proto-path|reflection" usage:"where to get schema from; default is to choose based on provided flags"`
+	Target       string   `cli:"target"`
+	Method       string   `cli:"method"`
+	Long         bool     `cli:"-l,--long" usage:"if listing methods, output in long format"`
+	Protoset     []string `cli:"--protoset" value:"file" usage:"get schema from .protoset file(s); can be provided multiple times"`
+	ProtoPath    []string `cli:"-I,--proto-path" value:"path" usage:"get schema from .proto files; can be provided multiple times"`
+	SchemaFrom   string   `cli:"--schema-from" value:"protoset|proto-path|reflection" usage:"where to get schema from; default is to choose based on provided flags"`
+	Insecure     bool     `cli:"--insecure"`
+	ServerRootCA []string `cli:"--server-root-ca"`
+	ServerName   string   `cli:"--server-name"`
+	ClientCert   []string `cli:"--client-cert"`
+	ClientKey    []string `cli:"--client-key"`
 }
 
 func main() {
 	cli.Run(context.Background(), func(ctx context.Context, args args) error {
-		serverCA, err := ioutil.ReadFile("internal/echoserver/server-ca.crt")
-		if err != nil {
-			return err
+		var certPool *x509.CertPool
+		if len(args.ServerRootCA) == 0 {
+			var err error
+			certPool, err = x509.SystemCertPool()
+			if err != nil {
+				panic(err)
+			}
+		} else {
+			certPool = x509.NewCertPool()
+			for _, f := range args.ServerRootCA {
+				serverCA, err := ioutil.ReadFile(f)
+				if err != nil {
+					panic(err)
+				}
+
+				if !certPool.AppendCertsFromPEM(serverCA) {
+					return fmt.Errorf("could not parse server CA file: %s", f)
+				}
+			}
 		}
 
-		certPool := x509.NewCertPool()
-		if !certPool.AppendCertsFromPEM(serverCA) {
-			return fmt.Errorf("failed to parse server CA cert")
+		if len(args.ClientCert) != len(args.ClientKey) {
+			return fmt.Errorf("--client-cert and --client-key must be passed an equal number of times")
 		}
 
-		//creds, err := credentials.NewClientTLSFromFile("internal/echoserver/client.crt", "grpcake-test-client.example.com")
-		//if err != nil {
-		//	return err
-		//}
+		var certs []tls.Certificate
+		for i, c := range args.ClientCert {
+			k := args.ClientKey[i]
+			cert, err := tls.LoadX509KeyPair(c, k)
+			if err != nil {
+				return fmt.Errorf("loading client key pair: cert: %s, key: %s: %w", c, k, err)
+			}
 
-		clientCert, err := tls.LoadX509KeyPair("internal/echoserver/client.crt", "internal/echoserver/client.key")
-		if err != nil {
-			return err
+			certs = append(certs, cert)
 		}
 
-		tlsConfig := tls.Config{RootCAs: certPool, ServerName: "grpcake-test-server.example.com", Certificates: []tls.Certificate{clientCert}}
+		tlsConfig := tls.Config{
+			InsecureSkipVerify: false, // todo support skipping server verify?
+			RootCAs:            certPool,
+			ServerName:         args.ServerName,
+			Certificates:       certs,
+		}
+
+		var creds credentials.TransportCredentials
+		if args.Insecure { // todo infer this from args (with user override)
+			creds = insecure.NewCredentials()
+		} else {
+			creds = credentials.NewTLS(&tlsConfig)
+		}
 
 		target := parseTarget(args.Target)
-		cc, err := grpc.Dial(target, grpc.WithTransportCredentials(credentials.NewTLS(&tlsConfig)))
+		cc, err := grpc.Dial(target, grpc.WithTransportCredentials(creds))
 		if err != nil {
 			return fmt.Errorf("dial: %w", err)
 		}
