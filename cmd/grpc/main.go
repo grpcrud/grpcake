@@ -28,7 +28,7 @@ type args struct {
 	Protoset       []string `cli:"--protoset" value:"file" usage:"get schema from .protoset file(s); can be provided multiple times"`
 	ProtoPath      []string `cli:"-I,--proto-path" value:"path" usage:"get schema from .proto files; can be provided multiple times"`
 	SchemaFrom     string   `cli:"--schema-from" value:"protoset|proto-path|reflection" usage:"where to get schema from; default is to choose based on provided flags"`
-	Insecure       bool     `cli:"--insecure" usage:"disable TLS; default is to validate TLS if target is not a localhost shorthand"`
+	Insecure       bool     `cli:"-k,--insecure" usage:"disable TLS; default is to validate TLS if target is not a localhost shorthand"`
 	ServerRootCA   []string `cli:"--server-root-ca"`
 	ServerName     string   `cli:"--server-name"`
 	ClientCert     []string `cli:"--client-cert"`
