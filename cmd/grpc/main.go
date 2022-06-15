@@ -16,6 +16,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/dynamicpb"
@@ -27,6 +28,7 @@ type args struct {
 	Long           bool     `cli:"-l,--long" usage:"if listing methods, output in long format"`
 	Protoset       []string `cli:"--protoset" value:"file" usage:"get schema from .protoset file(s); can be provided multiple times"`
 	SchemaFrom     string   `cli:"--schema-from" value:"protoset|reflection" usage:"where to get schema from; default is to choose based on provided flags"`
+	Header         []string `cli:"-H,--header"`
 	Insecure       bool     `cli:"-k,--insecure" usage:"disable TLS; default is to validate TLS if target is not a localhost shorthand"`
 	ServerRootCA   []string `cli:"--server-root-ca"`
 	ServerName     string   `cli:"--server-name"`
@@ -168,7 +170,7 @@ func invokeMethod(ctx context.Context, cc *grpc.ClientConn, msrc methodSource, a
 	}
 
 	if !method.IsStreamingClient() && !method.IsStreamingServer() {
-		return unaryInvoke(ctx, cc, method)
+		return unaryInvoke(ctx, cc, method, args)
 	}
 
 	streamDesc := grpc.StreamDesc{
@@ -218,7 +220,7 @@ func invokeMethod(ctx context.Context, cc *grpc.ClientConn, msrc methodSource, a
 	return nil
 }
 
-func unaryInvoke(ctx context.Context, cc *grpc.ClientConn, method protoreflect.MethodDescriptor) error {
+func unaryInvoke(ctx context.Context, cc *grpc.ClientConn, method protoreflect.MethodDescriptor, args args) error {
 	in, err := ioutil.ReadAll(os.Stdin)
 	if err != nil {
 		return err
@@ -228,6 +230,18 @@ func unaryInvoke(ctx context.Context, cc *grpc.ClientConn, method protoreflect.M
 	if err := protojson.Unmarshal(in, msgIn); err != nil {
 		return err
 	}
+
+	headers := metadata.MD{}
+	for _, h := range args.Header {
+		i := strings.Index(h, ": ")
+		if i < 0 {
+			return fmt.Errorf("invalid header: must contain ': ' between key and value: %q", h)
+		}
+
+		headers.Append(h[:i], h[i+2:])
+	}
+
+	ctx = metadata.NewOutgoingContext(ctx, headers)
 
 	msgOut := dynamicpb.NewMessage(method.Output())
 	if err := cc.Invoke(ctx, methodInvokeName(string(method.FullName())), msgIn, msgOut); err != nil {

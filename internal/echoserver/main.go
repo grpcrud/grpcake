@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"flag"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net"
@@ -14,6 +15,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
@@ -94,7 +96,15 @@ func (s server) Ping(_ context.Context, msg *emptypb.Empty) (*echo.PingMessage, 
 	return &echo.PingMessage{Pong: true}, nil
 }
 
-func (s server) Echo(_ context.Context, msg *echo.EchoMessage) (*echo.EchoMessage, error) {
+func (s server) Echo(ctx context.Context, msg *echo.EchoMessage) (*echo.EchoMessage, error) {
+	msg.Headers = map[string]*echo.EchoMessage_Values{}
+	if headers, ok := metadata.FromIncomingContext(ctx); ok {
+		fmt.Println("headers", headers)
+		for k, v := range headers {
+			msg.Headers[k] = &echo.EchoMessage_Values{Value: v}
+		}
+	}
+
 	return msg, nil
 }
 
