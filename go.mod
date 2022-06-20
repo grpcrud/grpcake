@@ -4,6 +4,7 @@ go 1.16
 
 require (
 	github.com/ucarion/cli v0.2.0
+	golang.org/x/sync v0.0.0-20220601150217-0de741cfad7f // indirect
 	golang.org/x/term v0.0.0-20220526004731-065cf7ba2467
 	google.golang.org/grpc v1.43.0
 	google.golang.org/grpc/cmd/protoc-gen-go-grpc v1.2.0

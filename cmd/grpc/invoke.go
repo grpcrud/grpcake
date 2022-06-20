@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -27,69 +28,78 @@ func invokeMethod(ctx context.Context, cc *grpc.ClientConn, msrc methodSource, a
 		ClientStreams: method.IsStreamingClient(),
 	}
 
+	g, ctx := errgroup.WithContext(ctx)
+
 	stream, err := cc.NewStream(ctx, &streamDesc, methodInvokeName(string(method.FullName())))
 	if err != nil {
 		return err
 	}
 
-	scan := bufio.NewScanner(os.Stdin)
-	for scan.Scan() {
-		msgIn := dynamicpb.NewMessage(method.Input())
-		if err := protojson.Unmarshal(scan.Bytes(), msgIn); err != nil {
-			return err
+	// write stdin to stream
+	g.Go(func() error {
+		scan := bufio.NewScanner(os.Stdin)
+		for scan.Scan() {
+			msg := dynamicpb.NewMessage(method.Input())
+			if err := protojson.Unmarshal(scan.Bytes(), msg); err != nil {
+				return err
+			}
+
+			if err := stream.SendMsg(msg); err != nil {
+				return err
+			}
 		}
 
-		if err := stream.SendMsg(msgIn); err != nil {
-			return err
-		}
-	}
+		return stream.CloseSend()
+	})
 
-	if err := stream.CloseSend(); err != nil {
-		return err
-	}
-
-	if args.DumpHeader {
+	// write stream to stdout (and header/trailer to stderr)
+	g.Go(func() error {
 		header, err := stream.Header()
 		if err != nil {
 			return err
 		}
 
-		log, err := json.Marshal(headerTrailer{Header: header})
-		if err != nil {
-			panic(fmt.Errorf("marshal header/trailer: %w", err))
-		}
-
-		_, _ = fmt.Fprintln(os.Stderr, string(log))
-	}
-
-	for {
-		msgOut := dynamicpb.NewMessage(method.Output())
-		if err := stream.RecvMsg(msgOut); err != nil {
-			if err == io.EOF {
-				break
+		if args.DumpHeader {
+			log, err := json.Marshal(headerTrailer{Header: header})
+			if err != nil {
+				return fmt.Errorf("marshal header/trailer: %w", err)
 			}
 
-			return err
+			_, _ = fmt.Fprintln(os.Stderr, string(log))
 		}
 
-		outputBytes, err := protojson.Marshal(msgOut)
-		if err != nil {
-			return err
+		for {
+			msg := dynamicpb.NewMessage(method.Output())
+			if err := stream.RecvMsg(msg); err != nil {
+				if err == io.EOF {
+					break
+				}
+
+				return err
+			}
+
+			b, err := protojson.Marshal(msg)
+			if err != nil {
+				return err
+			}
+
+			fmt.Println(string(b))
 		}
 
-		fmt.Println(string(outputBytes))
-	}
+		trailer := stream.Trailer()
+		if args.DumpTrailer {
+			log, err := json.Marshal(headerTrailer{Trailer: trailer})
+			if err != nil {
+				return fmt.Errorf("marshal header/trailer: %w", err)
+			}
 
-	if args.DumpTrailer {
-		log, err := json.Marshal(headerTrailer{Trailer: stream.Trailer()})
-		if err != nil {
-			panic(fmt.Errorf("marshal header/trailer: %w", err))
+			_, _ = fmt.Fprintln(os.Stderr, string(log))
 		}
 
-		_, _ = fmt.Fprintln(os.Stderr, string(log))
-	}
+		return nil
+	})
 
-	return nil
+	return g.Wait()
 }
 
 type headerTrailer struct {

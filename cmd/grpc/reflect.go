@@ -99,6 +99,10 @@ func (r reflectMethodSource) Method(name protoreflect.FullName) (protoreflect.Me
 		return nil, fmt.Errorf("recv FileContainingSymbol: %w", err)
 	}
 
+	if err, ok := res.MessageResponse.(*grpc_reflection_v1alpha.ServerReflectionResponse_ErrorResponse); ok {
+		return nil, fmt.Errorf("reflection: code: %v: %v", err.ErrorResponse.ErrorCode, err.ErrorResponse.ErrorMessage)
+	}
+
 	fdRes := res.MessageResponse.(*grpc_reflection_v1alpha.ServerReflectionResponse_FileDescriptorResponse)
 	files := fdRes.FileDescriptorResponse.FileDescriptorProto
 	var fds descriptorpb.FileDescriptorSet
