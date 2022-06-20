@@ -22,6 +22,7 @@ type args struct {
 	Long                     bool     `cli:"-l,--long" usage:"if listing methods, output in long format"`
 	Protoset                 []string `cli:"--protoset" value:"file" usage:"get schema from .protoset file(s); can be provided multiple times"`
 	SchemaFrom               string   `cli:"--schema-from" value:"protoset|reflection" usage:"where to get schema from; default is to choose based on provided flags"`
+	UserAgent                string   `cli:"-A,--user-agent"`
 	Header                   []string `cli:"-H,--header"`
 	HeaderRawKey             []string `cli:"--header-raw-key"`
 	HeaderRawValue           []string `cli:"--header-raw-value"`
@@ -92,7 +93,7 @@ func main() {
 			creds = credentials.NewTLS(&tlsConfig)
 		}
 
-		cc, err := grpc.Dial(target, grpc.WithTransportCredentials(creds))
+		cc, err := grpc.Dial(target, grpc.WithTransportCredentials(creds), grpc.WithUserAgent(args.UserAgent))
 		if err != nil {
 			return fmt.Errorf("dial: %w", err)
 		}
