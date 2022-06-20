@@ -24,28 +24,29 @@ import (
 )
 
 type args struct {
-	Target                string   `cli:"target"`
-	Method                string   `cli:"method"`
-	Long                  bool     `cli:"-l,--long" usage:"if listing methods, output in long format"`
-	Protoset              []string `cli:"--protoset" value:"file" usage:"get schema from .protoset file(s); can be provided multiple times"`
-	SchemaFrom            string   `cli:"--schema-from" value:"protoset|reflection" usage:"where to get schema from; default is to choose based on provided flags"`
-	Header                []string `cli:"-H,--header"`
-	HeaderRawKey          []string `cli:"--header-raw-key"`
-	HeaderRawValue        []string `cli:"--header-raw-value"`
-	ReflectHeader         []string `cli:"--reflect-header"`
-	ReflectHeaderRawKey   []string `cli:"--reflect-header-raw-key"`
-	ReflectHeaderRawValue []string `cli:"--reflect-header-raw-value"`
-	RPCHeader             []string `cli:"--rpc-header"`
-	RPCHeaderRawKey       []string `cli:"--rpc-header-raw-key"`
-	RPCHeaderRawValue     []string `cli:"--rpc-header-raw-value"`
-	DumpHeader            bool     `cli:"--dump-header"`
-	DumpTrailer           bool     `cli:"--dump-trailer"`
-	Insecure              bool     `cli:"-k,--insecure" usage:"disable TLS; default is to validate TLS if target is not a localhost shorthand"`
-	ServerRootCA          []string `cli:"--server-root-ca"`
-	ServerName            string   `cli:"--server-name"`
-	ClientCert            []string `cli:"--client-cert"`
-	ClientKey             []string `cli:"--client-key"`
-	NoWarnStdinTTY        bool     `cli:"--no-warn-stdin-tty"`
+	Target                   string   `cli:"target"`
+	Method                   string   `cli:"method"`
+	Long                     bool     `cli:"-l,--long" usage:"if listing methods, output in long format"`
+	Protoset                 []string `cli:"--protoset" value:"file" usage:"get schema from .protoset file(s); can be provided multiple times"`
+	SchemaFrom               string   `cli:"--schema-from" value:"protoset|reflection" usage:"where to get schema from; default is to choose based on provided flags"`
+	Header                   []string `cli:"-H,--header"`
+	HeaderRawKey             []string `cli:"--header-raw-key"`
+	HeaderRawValue           []string `cli:"--header-raw-value"`
+	ReflectHeader            []string `cli:"--reflect-header"`
+	ReflectHeaderRawKey      []string `cli:"--reflect-header-raw-key"`
+	ReflectHeaderRawValue    []string `cli:"--reflect-header-raw-value"`
+	RPCHeader                []string `cli:"--rpc-header"`
+	RPCHeaderRawKey          []string `cli:"--rpc-header-raw-key"`
+	RPCHeaderRawValue        []string `cli:"--rpc-header-raw-value"`
+	DumpHeader               bool     `cli:"--dump-header"`
+	DumpTrailer              bool     `cli:"--dump-trailer"`
+	Insecure                 bool     `cli:"-k,--insecure" usage:"disable TLS; default is to validate TLS if target is not a localhost shorthand"`
+	InsecureSkipServerVerify bool     `cli:"--insecure-skip-server-verify"`
+	ServerRootCA             []string `cli:"--server-root-ca"`
+	ServerName               string   `cli:"--server-name"`
+	ClientCert               []string `cli:"--client-cert"`
+	ClientKey                []string `cli:"--client-key"`
+	NoWarnStdinTTY           bool     `cli:"--no-warn-stdin-tty"`
 }
 
 func main() {
@@ -83,7 +84,7 @@ func main() {
 		}
 
 		tlsConfig := tls.Config{
-			InsecureSkipVerify: false, // todo support skipping server verify?
+			InsecureSkipVerify: args.InsecureSkipServerVerify,
 			RootCAs:            certPool,
 			ServerName:         args.ServerName,
 			Certificates:       certs,
