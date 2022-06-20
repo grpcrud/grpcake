@@ -2,17 +2,11 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"fmt"
-	"io/ioutil"
 	"os"
 
 	"github.com/ucarion/cli"
 	"golang.org/x/term"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 )
 
@@ -45,57 +39,9 @@ type args struct {
 
 func main() {
 	cli.Run(context.Background(), func(ctx context.Context, args args) error {
-		var certPool *x509.CertPool
-		if len(args.ServerRootCA) > 0 {
-			// tls.Config's default is to use system pool, so only override
-			// certPool if user provides CAs
-			certPool = x509.NewCertPool()
-			for _, f := range args.ServerRootCA {
-				serverCA, err := ioutil.ReadFile(f)
-				if err != nil {
-					panic(err)
-				}
-
-				if !certPool.AppendCertsFromPEM(serverCA) {
-					return fmt.Errorf("could not parse server CA file: %s", f)
-				}
-			}
-		}
-
-		if len(args.ClientCert) != len(args.ClientKey) {
-			return fmt.Errorf("--client-cert and --client-key must be passed an equal number of times")
-		}
-
-		var certs []tls.Certificate
-		for i, c := range args.ClientCert {
-			k := args.ClientKey[i]
-			cert, err := tls.LoadX509KeyPair(c, k)
-			if err != nil {
-				return fmt.Errorf("loading client key pair: cert: %s, key: %s: %w", c, k, err)
-			}
-
-			certs = append(certs, cert)
-		}
-
-		tlsConfig := tls.Config{
-			InsecureSkipVerify: args.InsecureSkipServerVerify,
-			RootCAs:            certPool,
-			ServerName:         args.ServerName,
-			Certificates:       certs,
-		}
-
-		target, isShorthand := parseTarget(args.Target)
-
-		var creds credentials.TransportCredentials
-		if isShorthand || args.Insecure {
-			creds = insecure.NewCredentials()
-		} else {
-			creds = credentials.NewTLS(&tlsConfig)
-		}
-
-		cc, err := grpc.Dial(target, grpc.WithTransportCredentials(creds), grpc.WithUserAgent(args.UserAgent))
+		cc, err := dial(args)
 		if err != nil {
-			return fmt.Errorf("dial: %w", err)
+			return err
 		}
 
 		if args.SchemaFrom == "" {
@@ -107,6 +53,8 @@ func main() {
 			}
 		}
 
+		// always parse all header params, even if some are ignored, so the user
+		// gets validation errors early
 		md, err := parseHeaders(args.Header, args.HeaderRawKey, args.HeaderRawValue)
 		if err != nil {
 			return fmt.Errorf("--header/--header-raw-key/--header-raw-value: %w", err)
@@ -122,6 +70,7 @@ func main() {
 			return fmt.Errorf("--rpc-header/--rpc-header-raw-key/--rpc-header-raw-value: %w", err)
 		}
 
+		// ctx shared between rpc and reflection
 		ctx = metadata.AppendToOutgoingContext(ctx, md...)
 
 		var msrc methodSource
@@ -132,7 +81,8 @@ func main() {
 				return err
 			}
 		case "reflection":
-			ctx = metadata.AppendToOutgoingContext(ctx, reflectMD...)
+			// ctx only used for reflection
+			ctx := metadata.AppendToOutgoingContext(ctx, reflectMD...)
 			msrc, err = newReflectMethodSource(ctx, cc)
 			if err != nil {
 				return err
@@ -140,6 +90,8 @@ func main() {
 		default:
 			return fmt.Errorf("invalid --schema-from: %s", args.SchemaFrom)
 		}
+
+		defer msrc.Close() // ignore this error as long as list/invoke works
 
 		if args.Method == "ll" {
 			args.Method = "ls"
@@ -154,6 +106,7 @@ func main() {
 			_, _ = fmt.Fprintln(os.Stderr, "warning: reading message(s) from stdin (disable this message with --no-warn-stdin-tty)")
 		}
 
+		// ctx only used for rpc
 		ctx = metadata.AppendToOutgoingContext(ctx, rpcMD...)
 		return invokeMethod(ctx, cc, msrc, args)
 	})
