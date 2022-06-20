@@ -13,6 +13,8 @@ service Echo {
   rpc ClientStreamEcho(stream EchoMessage) returns (CountMessage);
   rpc ServerStreamEcho(CountMessage) returns (stream EchoMessage);
   rpc BidiStreamEcho(stream EchoMessage) returns (stream EchoMessage);
+
+  rpc EchoMetadata(google.protobuf.Empty) returns (MetadataMessage);
 }
 
 message PingMessage {
@@ -20,15 +22,17 @@ message PingMessage {
 }
 
 message EchoMessage {
-  message Values {
-    repeated string value = 1;
-  }
-
   string message = 1;
-  map<string, Values> headers = 2;
-  map<string, Values> trailers = 3;
 }
 
 message CountMessage {
   int32 count = 1;
+}
+
+message MetadataMessage {
+  message Values {
+    repeated string values = 1;
+  }
+
+  map<string, Values> metadata = 1;
 }

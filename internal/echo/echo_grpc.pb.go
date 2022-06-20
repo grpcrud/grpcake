@@ -28,6 +28,7 @@ type EchoClient interface {
 	ClientStreamEcho(ctx context.Context, opts ...grpc.CallOption) (Echo_ClientStreamEchoClient, error)
 	ServerStreamEcho(ctx context.Context, in *CountMessage, opts ...grpc.CallOption) (Echo_ServerStreamEchoClient, error)
 	BidiStreamEcho(ctx context.Context, opts ...grpc.CallOption) (Echo_BidiStreamEchoClient, error)
+	EchoMetadata(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*MetadataMessage, error)
 }
 
 type echoClient struct {
@@ -153,6 +154,15 @@ func (x *echoBidiStreamEchoClient) Recv() (*EchoMessage, error) {
 	return m, nil
 }
 
+func (c *echoClient) EchoMetadata(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*MetadataMessage, error) {
+	out := new(MetadataMessage)
+	err := c.cc.Invoke(ctx, "/echo.Echo/EchoMetadata", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // EchoServer is the server API for Echo service.
 // All implementations must embed UnimplementedEchoServer
 // for forward compatibility
@@ -162,6 +172,7 @@ type EchoServer interface {
 	ClientStreamEcho(Echo_ClientStreamEchoServer) error
 	ServerStreamEcho(*CountMessage, Echo_ServerStreamEchoServer) error
 	BidiStreamEcho(Echo_BidiStreamEchoServer) error
+	EchoMetadata(context.Context, *emptypb.Empty) (*MetadataMessage, error)
 	mustEmbedUnimplementedEchoServer()
 }
 
@@ -183,6 +194,9 @@ func (UnimplementedEchoServer) ServerStreamEcho(*CountMessage, Echo_ServerStream
 }
 func (UnimplementedEchoServer) BidiStreamEcho(Echo_BidiStreamEchoServer) error {
 	return status.Errorf(codes.Unimplemented, "method BidiStreamEcho not implemented")
+}
+func (UnimplementedEchoServer) EchoMetadata(context.Context, *emptypb.Empty) (*MetadataMessage, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method EchoMetadata not implemented")
 }
 func (UnimplementedEchoServer) mustEmbedUnimplementedEchoServer() {}
 
@@ -306,6 +320,24 @@ func (x *echoBidiStreamEchoServer) Recv() (*EchoMessage, error) {
 	return m, nil
 }
 
+func _Echo_EchoMetadata_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EchoServer).EchoMetadata(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/echo.Echo/EchoMetadata",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EchoServer).EchoMetadata(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Echo_ServiceDesc is the grpc.ServiceDesc for Echo service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -320,6 +352,10 @@ var Echo_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Echo",
 			Handler:    _Echo_Echo_Handler,
+		},
+		{
+			MethodName: "EchoMetadata",
+			Handler:    _Echo_EchoMetadata_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

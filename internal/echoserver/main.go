@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"net"
 	"strconv"
+	"time"
 
 	"github.com/grpcrud/grpcake/internal/echo"
 	"google.golang.org/grpc"
@@ -78,13 +79,42 @@ func main() {
 		creds = credentials.NewTLS(&tlsConfig)
 	}
 
-	s := grpc.NewServer(grpc.Creds(creds))
+	s := grpc.NewServer(grpc.Creds(creds), grpc.UnaryInterceptor(unaryInterceptor), grpc.StreamInterceptor(streamInterceptor))
 	echo.RegisterEchoServer(s, server{})
 	reflection.Register(s)
 
 	if err := s.Serve(l); err != nil {
 		panic(err)
 	}
+}
+
+func unaryInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+	if err := grpc.SetHeader(ctx, metadata.Pairs("full_method", info.FullMethod)); err != nil {
+		return nil, err
+	}
+
+	start := time.Now()
+	resp, err := handler(ctx, req)
+
+	if err := grpc.SetTrailer(ctx, metadata.Pairs("latency", time.Since(start).String())); err != nil {
+		return nil, err
+	}
+
+	return resp, err
+}
+
+func streamInterceptor(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+	if err := ss.SetHeader(metadata.Pairs("full_method", info.FullMethod)); err != nil {
+		return err
+	}
+
+	start := time.Now()
+	if err := handler(srv, ss); err != nil {
+		return err
+	}
+
+	ss.SetTrailer(metadata.Pairs("latency", time.Since(start).String()))
+	return nil
 }
 
 type server struct {
@@ -96,21 +126,6 @@ func (s server) Ping(_ context.Context, msg *emptypb.Empty) (*echo.PingMessage, 
 }
 
 func (s server) Echo(ctx context.Context, msg *echo.EchoMessage) (*echo.EchoMessage, error) {
-	msg.Headers = map[string]*echo.EchoMessage_Values{}
-	if headers, ok := metadata.FromIncomingContext(ctx); ok {
-		for k, v := range headers {
-			msg.Headers[k] = &echo.EchoMessage_Values{Value: v}
-		}
-	}
-
-	if err := grpc.SetHeader(ctx, metadata.Pairs("header_message", msg.Message)); err != nil {
-		return nil, err
-	}
-
-	if err := grpc.SetTrailer(ctx, metadata.Pairs("trailer_message", msg.Message)); err != nil {
-		return nil, err
-	}
-
 	return msg, nil
 }
 
@@ -157,4 +172,17 @@ func (s server) BidiStreamEcho(stream echo.Echo_BidiStreamEchoServer) error {
 			return err
 		}
 	}
+}
+
+func (s server) EchoMetadata(ctx context.Context, _ *emptypb.Empty) (*echo.MetadataMessage, error) {
+	md, _ := metadata.FromIncomingContext(ctx)
+	res := &echo.MetadataMessage{Metadata: map[string]*echo.MetadataMessage_Values{}}
+	for k, vs := range md {
+		res.Metadata[k] = &echo.MetadataMessage_Values{}
+		for _, v := range vs {
+			res.Metadata[k].Values = append(res.Metadata[k].Values, v)
+		}
+	}
+
+	return res, nil
 }
