@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"flag"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"net"
@@ -99,10 +98,17 @@ func (s server) Ping(_ context.Context, msg *emptypb.Empty) (*echo.PingMessage, 
 func (s server) Echo(ctx context.Context, msg *echo.EchoMessage) (*echo.EchoMessage, error) {
 	msg.Headers = map[string]*echo.EchoMessage_Values{}
 	if headers, ok := metadata.FromIncomingContext(ctx); ok {
-		fmt.Println("headers", headers)
 		for k, v := range headers {
 			msg.Headers[k] = &echo.EchoMessage_Values{Value: v}
 		}
+	}
+
+	if err := grpc.SetHeader(ctx, metadata.Pairs("header_message", msg.Message)); err != nil {
+		return nil, err
+	}
+
+	if err := grpc.SetTrailer(ctx, metadata.Pairs("trailer_message", msg.Message)); err != nil {
+		return nil, err
 	}
 
 	return msg, nil

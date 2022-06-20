@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -23,18 +24,28 @@ import (
 )
 
 type args struct {
-	Target         string   `cli:"target"`
-	Method         string   `cli:"method"`
-	Long           bool     `cli:"-l,--long" usage:"if listing methods, output in long format"`
-	Protoset       []string `cli:"--protoset" value:"file" usage:"get schema from .protoset file(s); can be provided multiple times"`
-	SchemaFrom     string   `cli:"--schema-from" value:"protoset|reflection" usage:"where to get schema from; default is to choose based on provided flags"`
-	Header         []string `cli:"-H,--header"`
-	Insecure       bool     `cli:"-k,--insecure" usage:"disable TLS; default is to validate TLS if target is not a localhost shorthand"`
-	ServerRootCA   []string `cli:"--server-root-ca"`
-	ServerName     string   `cli:"--server-name"`
-	ClientCert     []string `cli:"--client-cert"`
-	ClientKey      []string `cli:"--client-key"`
-	NoWarnStdinTTY bool     `cli:"--no-warn-stdin-tty"`
+	Target                string   `cli:"target"`
+	Method                string   `cli:"method"`
+	Long                  bool     `cli:"-l,--long" usage:"if listing methods, output in long format"`
+	Protoset              []string `cli:"--protoset" value:"file" usage:"get schema from .protoset file(s); can be provided multiple times"`
+	SchemaFrom            string   `cli:"--schema-from" value:"protoset|reflection" usage:"where to get schema from; default is to choose based on provided flags"`
+	Header                []string `cli:"-H,--header"`
+	HeaderRawKey          []string `cli:"--header-raw-key"`
+	HeaderRawValue        []string `cli:"--header-raw-value"`
+	ReflectHeader         []string `cli:"--reflect-header"`
+	ReflectHeaderRawKey   []string `cli:"--reflect-header-raw-key"`
+	ReflectHeaderRawValue []string `cli:"--reflect-header-raw-value"`
+	RPCHeader             []string `cli:"--rpc-header"`
+	RPCHeaderRawKey       []string `cli:"--rpc-header-raw-key"`
+	RPCHeaderRawValue     []string `cli:"--rpc-header-raw-value"`
+	DumpHeader            bool     `cli:"--dump-header"`
+	DumpTrailer           bool     `cli:"--dump-trailer"`
+	Insecure              bool     `cli:"-k,--insecure" usage:"disable TLS; default is to validate TLS if target is not a localhost shorthand"`
+	ServerRootCA          []string `cli:"--server-root-ca"`
+	ServerName            string   `cli:"--server-name"`
+	ClientCert            []string `cli:"--client-cert"`
+	ClientKey             []string `cli:"--client-key"`
+	NoWarnStdinTTY        bool     `cli:"--no-warn-stdin-tty"`
 }
 
 func main() {
@@ -105,11 +116,29 @@ func main() {
 			}
 		}
 
+		md, err := parseHeaders(args.Header, args.HeaderRawKey, args.HeaderRawValue)
+		if err != nil {
+			return fmt.Errorf("--header/--header-raw-key/--header-raw-value: %w", err)
+		}
+
+		reflectMD, err := parseHeaders(args.ReflectHeader, args.ReflectHeaderRawKey, args.ReflectHeaderRawValue)
+		if err != nil {
+			return fmt.Errorf("--reflect-header/--reflect-header-raw-key/--reflect-header-raw-value: %w", err)
+		}
+
+		rpcMD, err := parseHeaders(args.RPCHeader, args.RPCHeaderRawKey, args.RPCHeaderRawValue)
+		if err != nil {
+			return fmt.Errorf("--rpc-header/--rpc-header-raw-key/--rpc-header-raw-value: %w", err)
+		}
+
+		ctx = metadata.AppendToOutgoingContext(ctx, md...)
+
 		var msrc methodSource
 		switch args.SchemaFrom {
 		case "protoset":
 			msrc, err = newProtosetMethodSource(args.Protoset)
 		case "reflection":
+			ctx = metadata.AppendToOutgoingContext(ctx, reflectMD...)
 			msrc, err = newReflectMethodSource(ctx, cc)
 		default:
 			return fmt.Errorf("invalid --schema-from: %s", args.SchemaFrom)
@@ -132,6 +161,7 @@ func main() {
 			_, _ = fmt.Fprintln(os.Stderr, "warning: reading message(s) from stdin (disable this message with --no-warn-stdin-tty)")
 		}
 
+		ctx = metadata.AppendToOutgoingContext(ctx, rpcMD...)
 		return invokeMethod(ctx, cc, msrc, args)
 	})
 }
@@ -199,6 +229,20 @@ func invokeMethod(ctx context.Context, cc *grpc.ClientConn, msrc methodSource, a
 		return err
 	}
 
+	if args.DumpHeader {
+		header, err := stream.Header()
+		if err != nil {
+			return err
+		}
+
+		log, err := json.Marshal(headerTrailer{Header: header})
+		if err != nil {
+			panic(fmt.Errorf("marshal header/trailer: %w", err))
+		}
+
+		_, _ = fmt.Fprintln(os.Stderr, string(log))
+	}
+
 	for {
 		msgOut := dynamicpb.NewMessage(method.Output())
 		if err := stream.RecvMsg(msgOut); err != nil {
@@ -217,7 +261,21 @@ func invokeMethod(ctx context.Context, cc *grpc.ClientConn, msrc methodSource, a
 		fmt.Println(string(outputBytes))
 	}
 
+	if args.DumpTrailer {
+		log, err := json.Marshal(headerTrailer{Trailer: stream.Trailer()})
+		if err != nil {
+			panic(fmt.Errorf("marshal header/trailer: %w", err))
+		}
+
+		_, _ = fmt.Fprintln(os.Stderr, string(log))
+	}
+
 	return nil
+}
+
+type headerTrailer struct {
+	Header  metadata.MD `json:"header,omitempty"`
+	Trailer metadata.MD `json:"trailer,omitempty"`
 }
 
 func unaryInvoke(ctx context.Context, cc *grpc.ClientConn, method protoreflect.MethodDescriptor, args args) error {
@@ -231,21 +289,28 @@ func unaryInvoke(ctx context.Context, cc *grpc.ClientConn, method protoreflect.M
 		return err
 	}
 
-	headers := metadata.MD{}
-	for _, h := range args.Header {
-		i := strings.Index(h, ": ")
-		if i < 0 {
-			return fmt.Errorf("invalid header: must contain ': ' between key and value: %q", h)
-		}
+	msgOut := dynamicpb.NewMessage(method.Output())
 
-		headers.Append(h[:i], h[i+2:])
+	var header, trailer metadata.MD
+	if err := cc.Invoke(ctx, methodInvokeName(string(method.FullName())), msgIn, msgOut, grpc.Header(&header), grpc.Trailer(&trailer)); err != nil {
+		return err
 	}
 
-	ctx = metadata.NewOutgoingContext(ctx, headers)
+	var headerTrailer headerTrailer
+	if args.DumpHeader {
+		headerTrailer.Header = header
+	}
+	if args.DumpTrailer {
+		headerTrailer.Trailer = trailer
+	}
 
-	msgOut := dynamicpb.NewMessage(method.Output())
-	if err := cc.Invoke(ctx, methodInvokeName(string(method.FullName())), msgIn, msgOut); err != nil {
-		return err
+	if args.DumpHeader || args.DumpTrailer {
+		log, err := json.Marshal(headerTrailer)
+		if err != nil {
+			panic(fmt.Errorf("marshal header/trailer: %w", err))
+		}
+
+		_, _ = fmt.Fprintln(os.Stderr, string(log))
 	}
 
 	outputBytes, err := protojson.Marshal(msgOut)
