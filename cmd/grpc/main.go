@@ -51,13 +51,9 @@ type args struct {
 func main() {
 	cli.Run(context.Background(), func(ctx context.Context, args args) error {
 		var certPool *x509.CertPool
-		if len(args.ServerRootCA) == 0 {
-			var err error
-			certPool, err = x509.SystemCertPool()
-			if err != nil {
-				panic(err)
-			}
-		} else {
+		if len(args.ServerRootCA) > 0 {
+			// tls.Config's default is to use system pool, so only override
+			// certPool if user provides CAs
 			certPool = x509.NewCertPool()
 			for _, f := range args.ServerRootCA {
 				serverCA, err := ioutil.ReadFile(f)
