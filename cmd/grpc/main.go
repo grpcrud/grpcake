@@ -128,15 +128,17 @@ func main() {
 		switch args.SchemaFrom {
 		case "protoset":
 			msrc, err = newProtosetMethodSource(args.Protoset)
+			if err != nil {
+				return err
+			}
 		case "reflection":
 			ctx = metadata.AppendToOutgoingContext(ctx, reflectMD...)
 			msrc, err = newReflectMethodSource(ctx, cc)
+			if err != nil {
+				return err
+			}
 		default:
 			return fmt.Errorf("invalid --schema-from: %s", args.SchemaFrom)
-		}
-
-		if err != nil {
-			return err
 		}
 
 		if args.Method == "ll" {
