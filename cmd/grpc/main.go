@@ -1,16 +1,12 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/json"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"os"
-	"strings"
 
 	"github.com/ucarion/cli"
 	"golang.org/x/term"
@@ -18,9 +14,6 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
-	"google.golang.org/protobuf/encoding/protojson"
-	"google.golang.org/protobuf/reflect/protoreflect"
-	"google.golang.org/protobuf/types/dynamicpb"
 )
 
 type args struct {
@@ -161,165 +154,4 @@ func main() {
 		ctx = metadata.AppendToOutgoingContext(ctx, rpcMD...)
 		return invokeMethod(ctx, cc, msrc, args)
 	})
-}
-
-func listMethods(msrc methodSource, args args) error {
-	methods, err := msrc.Methods()
-	if err != nil {
-		return err
-	}
-
-	for _, m := range methods {
-		if args.Long {
-			var streamClient string
-			if m.IsStreamingClient() {
-				streamClient = "stream "
-			}
-
-			var streamServer string
-			if m.IsStreamingServer() {
-				streamServer = "stream "
-			}
-
-			fmt.Printf("rpc %s(%s%s) returns (%s%s)\n", m.FullName(), streamClient, m.Input().FullName(), streamServer, m.Output().FullName())
-		} else {
-			fmt.Println(m.FullName())
-		}
-	}
-
-	return nil
-}
-
-func invokeMethod(ctx context.Context, cc *grpc.ClientConn, msrc methodSource, args args) error {
-	method, err := msrc.Method(protoreflect.FullName(args.Method))
-	if err != nil {
-		return err
-	}
-
-	if !method.IsStreamingClient() && !method.IsStreamingServer() {
-		return unaryInvoke(ctx, cc, method, args)
-	}
-
-	streamDesc := grpc.StreamDesc{
-		ServerStreams: method.IsStreamingServer(),
-		ClientStreams: method.IsStreamingClient(),
-	}
-
-	stream, err := cc.NewStream(ctx, &streamDesc, methodInvokeName(string(method.FullName())))
-	if err != nil {
-		return err
-	}
-
-	scan := bufio.NewScanner(os.Stdin)
-	for scan.Scan() {
-		msgIn := dynamicpb.NewMessage(method.Input())
-		if err := protojson.Unmarshal(scan.Bytes(), msgIn); err != nil {
-			return err
-		}
-
-		if err := stream.SendMsg(msgIn); err != nil {
-			return err
-		}
-	}
-
-	if err := stream.CloseSend(); err != nil {
-		return err
-	}
-
-	if args.DumpHeader {
-		header, err := stream.Header()
-		if err != nil {
-			return err
-		}
-
-		log, err := json.Marshal(headerTrailer{Header: header})
-		if err != nil {
-			panic(fmt.Errorf("marshal header/trailer: %w", err))
-		}
-
-		_, _ = fmt.Fprintln(os.Stderr, string(log))
-	}
-
-	for {
-		msgOut := dynamicpb.NewMessage(method.Output())
-		if err := stream.RecvMsg(msgOut); err != nil {
-			if err == io.EOF {
-				break
-			}
-
-			return err
-		}
-
-		outputBytes, err := protojson.Marshal(msgOut)
-		if err != nil {
-			return err
-		}
-
-		fmt.Println(string(outputBytes))
-	}
-
-	if args.DumpTrailer {
-		log, err := json.Marshal(headerTrailer{Trailer: stream.Trailer()})
-		if err != nil {
-			panic(fmt.Errorf("marshal header/trailer: %w", err))
-		}
-
-		_, _ = fmt.Fprintln(os.Stderr, string(log))
-	}
-
-	return nil
-}
-
-type headerTrailer struct {
-	Header  metadata.MD `json:"header,omitempty"`
-	Trailer metadata.MD `json:"trailer,omitempty"`
-}
-
-func unaryInvoke(ctx context.Context, cc *grpc.ClientConn, method protoreflect.MethodDescriptor, args args) error {
-	in, err := ioutil.ReadAll(os.Stdin)
-	if err != nil {
-		return err
-	}
-
-	msgIn := dynamicpb.NewMessage(method.Input())
-	if err := protojson.Unmarshal(in, msgIn); err != nil {
-		return err
-	}
-
-	msgOut := dynamicpb.NewMessage(method.Output())
-
-	var header, trailer metadata.MD
-	if err := cc.Invoke(ctx, methodInvokeName(string(method.FullName())), msgIn, msgOut, grpc.Header(&header), grpc.Trailer(&trailer)); err != nil {
-		return err
-	}
-
-	var headerTrailer headerTrailer
-	if args.DumpHeader {
-		headerTrailer.Header = header
-	}
-	if args.DumpTrailer {
-		headerTrailer.Trailer = trailer
-	}
-
-	if args.DumpHeader || args.DumpTrailer {
-		log, err := json.Marshal(headerTrailer)
-		if err != nil {
-			panic(fmt.Errorf("marshal header/trailer: %w", err))
-		}
-
-		_, _ = fmt.Fprintln(os.Stderr, string(log))
-	}
-
-	outputBytes, err := protojson.Marshal(msgOut)
-	if err != nil {
-		return err
-	}
-
-	fmt.Println(string(outputBytes))
-	return nil
-}
-
-func methodInvokeName(name string) string {
-	i := strings.LastIndexByte(name, '.')
-	return "/" + name[:i] + "/" + name[i+1:]
 }
