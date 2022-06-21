@@ -39,6 +39,11 @@ type args struct {
 
 func main() {
 	cli.Run(context.Background(), func(ctx context.Context, args args) error {
+		// set default user-agent
+		if args.UserAgent == "" {
+			args.UserAgent = fmt.Sprintf("grpcake/%s", version)
+		}
+
 		cc, err := dial(args)
 		if err != nil {
 			return err
