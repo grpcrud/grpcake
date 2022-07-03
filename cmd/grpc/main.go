@@ -59,7 +59,7 @@ func (args args) Autocomplete_Method() []string {
 		return nil
 	}
 
-	var out []string
+	out := []string{"ls", "ll"}
 	for _, m := range methods {
 		out = append(out, string(m.FullName()))
 	}
