@@ -7,6 +7,7 @@ import (
 
 	"github.com/ucarion/cli"
 	"golang.org/x/term"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )
 
@@ -37,66 +38,51 @@ type args struct {
 	NoWarnStdinTTY           bool     `cli:"--no-warn-stdin-tty"`
 }
 
+func (args args) Autocomplete_Method() []string {
+	args.populateDefaults()
+	ctx, _, err := args.metadataContexts(context.Background())
+	if err != nil {
+		return nil
+	}
+
+	cc, err := dial(args)
+	if args.SchemaFrom == "protoreflect" && err != nil {
+		// we only need cc if we're using reflection
+		return nil
+	}
+
+	msrc, err := args.methodSource(ctx, cc)
+	defer msrc.Close()
+
+	methods, err := msrc.Methods()
+	if err != nil {
+		return nil
+	}
+
+	var out []string
+	for _, m := range methods {
+		out = append(out, string(m.FullName()))
+	}
+
+	return out
+}
+
 func main() {
 	cli.Run(context.Background(), func(ctx context.Context, args args) error {
-		// set default user-agent
-		if args.UserAgent == "" {
-			args.UserAgent = fmt.Sprintf("grpcake/%s", version)
-		}
+		args.populateDefaults()
 
 		cc, err := dial(args)
 		if err != nil {
 			return err
 		}
 
-		if args.SchemaFrom == "" {
-			switch {
-			case len(args.Protoset) != 0:
-				args.SchemaFrom = "protoset"
-			default:
-				args.SchemaFrom = "reflection"
-			}
-		}
-
-		// always parse all header params, even if some are ignored, so the user
-		// gets validation errors early
-		md, err := parseHeaders(args.Header, args.HeaderRawKey, args.HeaderRawValue)
+		ctxReflect, ctxRPC, err := args.metadataContexts(ctx)
 		if err != nil {
-			return fmt.Errorf("--header/--header-raw-key/--header-raw-value: %w", err)
+			return err
 		}
 
-		reflectMD, err := parseHeaders(args.ReflectHeader, args.ReflectHeaderRawKey, args.ReflectHeaderRawValue)
-		if err != nil {
-			return fmt.Errorf("--reflect-header/--reflect-header-raw-key/--reflect-header-raw-value: %w", err)
-		}
-
-		rpcMD, err := parseHeaders(args.RPCHeader, args.RPCHeaderRawKey, args.RPCHeaderRawValue)
-		if err != nil {
-			return fmt.Errorf("--rpc-header/--rpc-header-raw-key/--rpc-header-raw-value: %w", err)
-		}
-
-		// ctx shared between rpc and reflection
-		ctx = metadata.AppendToOutgoingContext(ctx, md...)
-
-		var msrc methodSource
-		switch args.SchemaFrom {
-		case "protoset":
-			msrc, err = newProtosetMethodSource(args.Protoset)
-			if err != nil {
-				return err
-			}
-		case "reflection":
-			// ctx only used for reflection
-			ctx := metadata.AppendToOutgoingContext(ctx, reflectMD...)
-			msrc, err = newReflectMethodSource(ctx, cc)
-			if err != nil {
-				return err
-			}
-		default:
-			return fmt.Errorf("invalid --schema-from: %s", args.SchemaFrom)
-		}
-
-		defer msrc.Close() // ignore this error as long as list/invoke works
+		msrc, err := args.methodSource(ctxReflect, cc)
+		defer msrc.Close()
 
 		if args.Method == "ll" {
 			args.Method = "ls"
@@ -111,8 +97,53 @@ func main() {
 			_, _ = fmt.Fprintln(os.Stderr, "warning: reading message(s) from stdin (disable this message with --no-warn-stdin-tty)")
 		}
 
-		// ctx only used for rpc
-		ctx = metadata.AppendToOutgoingContext(ctx, rpcMD...)
-		return invokeMethod(ctx, cc, msrc, args)
+		return invokeMethod(ctxRPC, cc, msrc, args)
 	})
+}
+
+func (args *args) populateDefaults() {
+	if args.UserAgent == "" {
+		args.UserAgent = fmt.Sprintf("grpcake/%s", version)
+	}
+
+	if args.SchemaFrom == "" {
+		switch {
+		case len(args.Protoset) != 0:
+			args.SchemaFrom = "protoset"
+		default:
+			args.SchemaFrom = "reflection"
+		}
+	}
+}
+
+// metadataContexts returns contexts to be used for reflection and RPC calls.
+func (args args) metadataContexts(ctx context.Context) (context.Context, context.Context, error) {
+	md, err := parseHeaders(args.Header, args.HeaderRawKey, args.HeaderRawValue)
+	if err != nil {
+		return nil, nil, fmt.Errorf("--header/--header-raw-key/--header-raw-value: %w", err)
+	}
+
+	reflectMD, err := parseHeaders(args.ReflectHeader, args.ReflectHeaderRawKey, args.ReflectHeaderRawValue)
+	if err != nil {
+		return nil, nil, fmt.Errorf("--reflect-header/--reflect-header-raw-key/--reflect-header-raw-value: %w", err)
+	}
+
+	rpcMD, err := parseHeaders(args.RPCHeader, args.RPCHeaderRawKey, args.RPCHeaderRawValue)
+	if err != nil {
+		return nil, nil, fmt.Errorf("--rpc-header/--rpc-header-raw-key/--rpc-header-raw-value: %w", err)
+	}
+
+	ctx = metadata.AppendToOutgoingContext(ctx, md...)
+	return metadata.AppendToOutgoingContext(ctx, reflectMD...), metadata.AppendToOutgoingContext(ctx, rpcMD...), nil
+}
+
+func (args args) methodSource(ctx context.Context, cc *grpc.ClientConn) (methodSource, error) {
+	switch args.SchemaFrom {
+	case "protoset":
+		return newProtosetMethodSource(args.Protoset)
+	case "reflection":
+		return newReflectMethodSource(ctx, cc)
+	default:
+		return nil, fmt.Errorf("invalid --schema-from: %s", args.SchemaFrom)
+	}
 }
