@@ -134,6 +134,10 @@ func (args args) Autocomplete_Method() []string {
 	}
 
 	msrc, err := args.methodSource(ctx, cc)
+	if err != nil {
+		return nil
+	}
+
 	defer msrc.Close()
 
 	methods, err := msrc.Methods()
@@ -164,6 +168,10 @@ func main() {
 		}
 
 		msrc, err := args.methodSource(ctxReflect, cc)
+		if err != nil {
+			return err
+		}
+
 		defer msrc.Close()
 
 		if args.Method == "ll" {
