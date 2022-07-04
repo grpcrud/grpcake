@@ -120,39 +120,6 @@ To output server response headers and trailers, use "--dump-header" and
 `)
 }
 
-func (args args) Autocomplete_Method() []string {
-	args.populateDefaults()
-	ctx, _, err := args.metadataContexts(context.Background())
-	if err != nil {
-		return nil
-	}
-
-	cc, err := dial(args)
-	if args.SchemaFrom == "protoreflect" && err != nil {
-		// we only need cc if we're using reflection
-		return nil
-	}
-
-	msrc, err := args.methodSource(ctx, cc)
-	if err != nil {
-		return nil
-	}
-
-	defer msrc.Close()
-
-	methods, err := msrc.Methods()
-	if err != nil {
-		return nil
-	}
-
-	out := []string{"ls", "ll"}
-	for _, m := range methods {
-		out = append(out, string(m.FullName()))
-	}
-
-	return out
-}
-
 func main() {
 	cli.Run(context.Background(), func(ctx context.Context, args args) error {
 		args.populateDefaults()
@@ -189,6 +156,39 @@ func main() {
 
 		return invokeMethod(ctxRPC, cc, msrc, args)
 	})
+}
+
+func (args args) Autocomplete_Method() []string {
+	args.populateDefaults()
+	ctx, _, err := args.metadataContexts(context.Background())
+	if err != nil {
+		return nil
+	}
+
+	cc, err := dial(args)
+	if args.SchemaFrom == "protoreflect" && err != nil {
+		// we only need cc if we're using reflection
+		return nil
+	}
+
+	msrc, err := args.methodSource(ctx, cc)
+	if err != nil {
+		return nil
+	}
+
+	defer msrc.Close()
+
+	methods, err := msrc.Methods()
+	if err != nil {
+		return nil
+	}
+
+	out := []string{"ls", "ll"}
+	for _, m := range methods {
+		out = append(out, string(m.FullName()))
+	}
+
+	return out
 }
 
 func (args *args) populateDefaults() {
