@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
@@ -11,7 +12,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-func dial(args args) (*grpc.ClientConn, error) {
+func dial(ctx context.Context, args args) (*grpc.ClientConn, error) {
 	// always parse tls params, even if they are ultimately ignored, so that the
 	// user gets validation errors early
 	tlsConfig, err := tlsConfig(args)
@@ -28,7 +29,7 @@ func dial(args args) (*grpc.ClientConn, error) {
 		creds = credentials.NewTLS(tlsConfig)
 	}
 
-	cc, err := grpc.Dial(target, grpc.WithTransportCredentials(creds), grpc.WithUserAgent(args.UserAgent))
+	cc, err := grpc.DialContext(ctx, target, grpc.WithTransportCredentials(creds), grpc.WithUserAgent(args.UserAgent))
 	if err != nil {
 		return nil, fmt.Errorf("dial: %w", err)
 	}

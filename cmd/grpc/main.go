@@ -124,7 +124,7 @@ func main() {
 	cli.Run(context.Background(), func(ctx context.Context, args args) error {
 		args.populateDefaults()
 
-		cc, err := dial(args)
+		cc, err := dial(ctx, args)
 		if err != nil {
 			return err
 		}
@@ -165,7 +165,7 @@ func (args args) Autocomplete_Method() []string {
 		return nil
 	}
 
-	cc, err := dial(args)
+	cc, err := dial(context.Background(), args)
 	if args.SchemaFrom == "protoreflect" && err != nil {
 		// we only need cc if we're using reflection
 		return nil
