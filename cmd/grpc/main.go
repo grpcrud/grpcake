@@ -3,11 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/ucarion/cli"
-	"golang.org/x/term"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )
@@ -148,10 +146,6 @@ func main() {
 
 		if args.Method == "ls" {
 			return listMethods(msrc, args)
-		}
-
-		if !args.NoWarnStdinTTY && term.IsTerminal(int(os.Stdin.Fd())) {
-			_, _ = fmt.Fprintln(os.Stderr, "warning: reading message(s) from stdin (disable this message with --no-warn-stdin-tty)")
 		}
 
 		return invokeMethod(ctxRPC, cc, msrc, args)

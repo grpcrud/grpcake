@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"golang.org/x/sync/errgroup"
+	"golang.org/x/term"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -33,6 +34,11 @@ func invokeMethod(ctx context.Context, cc *grpc.ClientConn, msrc methodSource, a
 	stream, err := cc.NewStream(ctx, &streamDesc, methodInvokeName(string(method.FullName())))
 	if err != nil {
 		return err
+	}
+
+	// warn about stdin being a tty
+	if !args.NoWarnStdinTTY && term.IsTerminal(int(os.Stdin.Fd())) {
+		_, _ = fmt.Fprintln(os.Stderr, "warning: reading message(s) from stdin (disable this message with --no-warn-stdin-tty)")
 	}
 
 	// write stdin to stream
