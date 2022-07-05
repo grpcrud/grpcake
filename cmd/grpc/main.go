@@ -15,7 +15,6 @@ type args struct {
 	Method                   string   `cli:"method"`
 	Long                     bool     `cli:"-l,--long" usage:"if listing methods, output in long format"`
 	Protoset                 []string `cli:"--protoset" value:"file" usage:"get schema from .protoset file(s); can be provided multiple times"`
-	SchemaFrom               string   `cli:"--schema-from" value:"protoset|reflection" usage:"where to get schema from; default is to choose based on provided flags"`
 	UserAgent                string   `cli:"-A,--user-agent" value:"user-agent" usage:"user-agent string to use in all RPCs"`
 	Header                   []string `cli:"-H,--header" value:"header" usage:"metadata header key/value pair, of the form 'key: value'"`
 	HeaderRawKey             []string `cli:"--header-raw-key" value:"raw-key" usage:"metadata header key; use in pairs with --header-raw-value"`
@@ -160,7 +159,7 @@ func (args args) Autocomplete_Method() []string {
 	}
 
 	cc, err := dial(context.Background(), args)
-	if args.SchemaFrom == "protoreflect" && err != nil {
+	if len(args.Protoset) == 0 && err != nil {
 		// we only need cc if we're using reflection
 		return nil
 	}
@@ -189,15 +188,6 @@ func (args *args) populateDefaults() {
 	if args.UserAgent == "" {
 		args.UserAgent = fmt.Sprintf("grpcake/%s", version)
 	}
-
-	if args.SchemaFrom == "" {
-		switch {
-		case len(args.Protoset) != 0:
-			args.SchemaFrom = "protoset"
-		default:
-			args.SchemaFrom = "reflection"
-		}
-	}
 }
 
 // metadataContexts returns contexts to be used for reflection and RPC calls.
@@ -222,12 +212,9 @@ func (args args) metadataContexts(ctx context.Context) (context.Context, context
 }
 
 func (args args) methodSource(ctx context.Context, cc *grpc.ClientConn) (methodSource, error) {
-	switch args.SchemaFrom {
-	case "protoset":
-		return newProtosetMethodSource(args.Protoset)
-	case "reflection":
+	if len(args.Protoset) == 0 {
 		return newReflectMethodSource(ctx, args, cc)
-	default:
-		return nil, fmt.Errorf("invalid --schema-from: %s", args.SchemaFrom)
 	}
+
+	return newProtosetMethodSource(args.Protoset)
 }
