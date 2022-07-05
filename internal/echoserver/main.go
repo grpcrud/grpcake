@@ -29,6 +29,7 @@ func main() {
 	serverKeyFile := flag.String("server-key-file", "internal/echoserver/server.key", "server key file")
 	clientTLS := flag.Bool("client-tls", false, "require client tls auth")
 	clientCACertFile := flag.String("client-ca-cert-file", "internal/echoserver/client-ca.crt", "client CA cert file")
+	reflection_ := flag.Bool("reflection", false, "enable reflection")
 	flag.Parse()
 
 	var tlsConfig tls.Config
@@ -81,7 +82,10 @@ func main() {
 
 	s := grpc.NewServer(grpc.Creds(creds), grpc.UnaryInterceptor(unaryInterceptor), grpc.StreamInterceptor(streamInterceptor))
 	echo.RegisterEchoServer(s, server{})
-	reflection.Register(s)
+
+	if *reflection_ {
+		reflection.Register(s)
+	}
 
 	if err := s.Serve(l); err != nil {
 		panic(err)

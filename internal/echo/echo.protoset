@@ -4,7 +4,7 @@
 EmptyB}
 com.google.protobufB
 EmptyProtoPZ.google.golang.org/protobuf/types/known/emptypb¯¢GPB™Google.Protobuf.WellKnownTypesbproto3
-ı
+Ü
 
 echo.protoechogoogle/protobuf/empty.proto"!
 PingMessage
@@ -12,10 +12,18 @@ echo.protoechogoogle/protobuf/empty.proto"!
 EchoMessage
 message (	Rmessage"$
 CountMessage
-count (Rcount2ù
+count (Rcount"œ
+MetadataMessage?
+metadata (2#.echo.MetadataMessage.MetadataEntryRmetadata 
+Values
+values (	RvaluesY
+MetadataEntry
+key (	Rkey2
+value (2.echo.MetadataMessage.ValuesRvalue:82‹
 Echo1
 Ping.google.protobuf.Empty.echo.PingMessage,
 Echo.echo.EchoMessage.echo.EchoMessage;
 ClientStreamEcho.echo.EchoMessage.echo.CountMessage(;
 ServerStreamEcho.echo.CountMessage.echo.EchoMessage0:
-BidiStreamEcho.echo.EchoMessage.echo.EchoMessage(0B*Z(github.com/grpcrud/grpcake/internal/echobproto3
+BidiStreamEcho.echo.EchoMessage.echo.EchoMessage(0=
+EchoMetadata.google.protobuf.Empty.echo.MetadataMessageB*Z(github.com/grpcrud/grpcake/internal/echobproto3

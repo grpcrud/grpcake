@@ -16,8 +16,12 @@ type reflectMethodSource struct {
 	client grpc_reflection_v1alpha.ServerReflection_ServerReflectionInfoClient
 }
 
-func newReflectMethodSource(ctx context.Context, cc *grpc.ClientConn, opts ...grpc.CallOption) (reflectMethodSource, error) {
+func newReflectMethodSource(ctx context.Context, args args, cc *grpc.ClientConn, opts ...grpc.CallOption) (reflectMethodSource, error) {
 	client, err := grpc_reflection_v1alpha.NewServerReflectionClient(cc).ServerReflectionInfo(ctx, opts...)
+	if err != nil {
+		return reflectMethodSource{}, humanizeConnErr(args, err)
+	}
+
 	return reflectMethodSource{client: client}, err
 }
 
@@ -30,7 +34,7 @@ func (r reflectMethodSource) Methods() ([]protoreflect.MethodDescriptor, error) 
 
 	res, err := r.client.Recv()
 	if err != nil {
-		return nil, fmt.Errorf("recv ListServices: %w", err)
+		return nil, fmt.Errorf("recv ListServices: %w (does the server have gRPC reflection enabled?)", err)
 	}
 
 	var svcs []string

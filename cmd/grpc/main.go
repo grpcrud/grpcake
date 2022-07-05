@@ -226,7 +226,7 @@ func (args args) methodSource(ctx context.Context, cc *grpc.ClientConn) (methodS
 	case "protoset":
 		return newProtosetMethodSource(args.Protoset)
 	case "reflection":
-		return newReflectMethodSource(ctx, cc)
+		return newReflectMethodSource(ctx, args, cc)
 	default:
 		return nil, fmt.Errorf("invalid --schema-from: %s", args.SchemaFrom)
 	}

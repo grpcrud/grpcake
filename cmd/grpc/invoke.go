@@ -33,7 +33,7 @@ func invokeMethod(ctx context.Context, cc *grpc.ClientConn, msrc methodSource, a
 
 	stream, err := cc.NewStream(ctx, &streamDesc, methodInvokeName(string(method.FullName())))
 	if err != nil {
-		return err
+		return humanizeConnErr(args, err)
 	}
 
 	// warn about stdin being a tty
