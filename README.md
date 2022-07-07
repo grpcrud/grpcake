@@ -1,7 +1,7 @@
 # gRPCake
 
 gRPCake is a command-line [gRPC](https://grpc.io) client. Its goal is to make
-interacting with gRPC services as straightforward as possible. gRPCake is great 
+interacting with gRPC services as straightforward as possible. gRPCake is great
 for testing, debugging, or otherwise interacting with gRPC services, including
 in development. gRPCake ships as a conventional Unix tool called `grpc`.
 
@@ -30,7 +30,7 @@ TODO
 
 ## Basic Usage
 
-You use gRPCake using the `grpc` command. There are two ways you can use `grpc`. 
+You use gRPCake using the `grpc` command. There are two ways you can use `grpc`.
 To list available RPC methods, use `ls`:
 
 ```sh
@@ -100,76 +100,223 @@ communication. You can solve this by [passing `-k` / `--insecure`](#server-tls).
 
 ### Method Discovery
 
+To call a gRPC RPC method, you need to know the method's input and output
+schema. `grpc` supports two ways of discovering what methods are available, and
+what types they take and return.
+
+* By default, `grpc` uses [the gRPC reflection
+  API](https://github.com/grpc/grpc/blob/master/doc/server-reflection.md) to
+  discover methods. If you get an error about:
+
+  ```text
+  unknown service grpc.reflection.v1alpha.ServerReflection
+  ```
+
+  Then it's likely because `grpc` is trying to do discovery using reflection, but
+  the server doesn't implement the reflection API. In that case, you'll need to
+  use the other supported discovery method:
+
+* If you pass `--protoset` at least once, `grpc` will instead use [`.protoset`
+  files](https://developers.google.com/protocol-buffers/docs/techniques#self-description)
+  to discover methods. `.protoset` files, also called "file descriptor sets",
+  are a machine-readable version of `.proto` files.
+
+  To generate `.protoset` files, you'll typically need to take your existing
+  `protoc` invocation:
+
+  ```sh
+  protoc ...
+  ```
+
+  And tell it to also generate a `.protoset` in addition to whatever else it's
+  generating:
+
+  ```sh
+  protoc ... --descriptor_set_out=example.protoset --include_imports
+  ```
+
+  Which you can then pass to `grpc`:
+
+  ```sh
+  grpc --protoset example.protoset : echo.EchoService.Echo
+  ```
+
+  You can pass `--protoset` multiple times if you have multiple `.protoset`
+  files.
+
 ### gRPC Metadata
+
+To send [gRPC
+metadata](https://grpc.io/docs/what-is-grpc/core-concepts/#metadata) using
+`grpc`, you can use `-H` / `--header`:
+
+```sh
+grpc -H 'key: value' ...
+```
+
+The syntax for `-H` / `--header` is meant to be familiar to users of `curl`. But
+gRPC metadata keys are allowed to contain colons, so this syntax can be too
+constraining. In this case, you can instead pass metadata key/value pairs using
+`--header-raw-key` / `--header-raw-value` pairs:
+
+```sh
+grpc --header-raw-key key --header-raw-value value
+```
+
+gRPC treats metadata keys ending in `-bin` specially, and `grpc` does too.
+Metadata keys ending in `-bin` must have base64-encoded binary values. For
+instance, to send a header whose value is just NULL (`\0`), which base64-encodes
+as `AA==`, do this:
+
+```sh
+# these are equivalent
+grpc --header "key-bin: AA==" ...
+grpc --header-raw-key 'key-bin' --header-raw-value 'AA==' ...
+```
+
+Metadata provided via `--header` / `--header-raw-key` / `--header-raw-value` are
+passed to both reflection endpoints (if `grpc` is using [reflection-based
+discovery](#method-discovery)) and RPC endpoints (i.e. the endpoint you are
+calling with `grpc`). To send metadata only to one or the other, you can instead
+use:
+
+* `--reflect-header` / `--reflect-header-raw-key` / `--reflect-header-raw-value`
+  are only used for method-discovery-related reflection API calls.
+* `--rpc-header` / `--rpc-header-raw-key` / `--rpc-header-raw-value` are only
+  used for your end RPC calls.
 
 ### Headers and Trailers
 
+gRPC server responses can contain both headers and trailers. To dump the headers
+and trailers from the server's response, use `--dump-header`
+and `--dump-trailer`. Server response metadata are carried in the response
+header, so you can use `--dump-header` to see that data.
+
+For example, you can use:
+
+```sh
+grpc --dump-header --dump-trailer : example.ExampleService.ExampleMethod
+```
+
+This will output JSON messages to stderr that look like this:
+
+```json
+{"header":{"content-type":["application/grpc"],"my-custom-header":["foo"]}}
+{"trailer":{"my-custom-trailer":["bar"]}}
+```
+
+`grpc` will output headers first, then RPC results, then trailers. There will be
+exactly one header log line, and exactly one trailer log line.
+
 ### Server TLS
+
+`grpc` uses TLS by default. You can force `grpc` to use plaintext by:
+
+* Using one of the shorthand target syntaxes, i.e. `:` or `:xxxx`
+* Explicitly disabling TLS using `-k` / `--insecure`
+
+By default, `grpc` will authenticate the server whenever communicating over TLS.
+You can customize how that authentication works with a few options:
+
+* `--insecure-skip-server-verify` disables server authentication altogether.
+  Communication will still happen over TLS, but the server's authenticity will
+  not be established.
+* `--server-root-ca <ca-cert>` lets you specify a certificate authority to use
+  when verifying the server's certificates. `<ca-cert>` should be the path to a
+  PEM-encoded CA certificate. You can pass this multiple times to create a pool
+  of CAs. The default is to use the system CA pool.
+* `--server-name <server-name-override>` lets you override the expected hostname
+  of the server. This value is also used as the `:authority` HTTP/2
+  pseudo-header.
+
+Taken together, these last two headers can be useful for testing TLS servers
+locally. For instance, here's a sequence of commands that generates a server
+keypair for local development:
+
+```sh
+openssl genrsa -out server-ca.key 4096
+openssl req -x509 -new -nodes -sha256 -key server-ca.key -subj "/CN=example-server-ca" -days 365 -out server-ca.crt
+
+openssl genrsa -out server.key 4096
+openssl req -new -sha256 -key server.key -subj "/CN=example-server" -config openssl.conf -reqexts server -out server.csr
+
+openssl x509 -req -sha256 -in server.csr -CA server-ca.crt -CAkey server-ca.key -set_serial 1 -out server.crt -days 365 -extfile openssl.conf -extensions server
+```
+
+Where `openssl.conf` contains:
+
+```text
+[req]
+distinguished_name = req_distinguished_name
+attributes = req_attributes
+
+[req_distinguished_name]
+
+[req_attributes]
+
+[server]
+subjectAltName=DNS:example-server.example.com
+```
+
+Assuming the server then serves over TLS with the creds `server.key` and
+`server.crt`, then you can connect to the server by running:
+
+```sh
+grpc localhost:50051 ls --server-root-ca server-ca.crt --server-name example-server.example.com
+```
+
+Note that you must use `localhost:50051`, not the shorthand `:50051` or `:`,
+because `grpc` will disable TLS if you use a shorthand target syntax.
 
 ### Mutual TLS
 
-[//]: # ()
-[//]: # (You can also list methods available on the server using `ls`:)
+Mutual TLS (aka "mTLS") refers to the idea of the *server* establishing the
+authenticity of the *client*, in addition to the server authenticity discussed
+in [the previous section on "Server TLS"](#server-tls).
 
-[//]: # ()
-[//]: # (```bash)
+You can provide credentials to present to the server using `--client-key` and
+`--client-cert`. You can provide these multiple times, and the first pair
+satisfying the server's requirements will be used.
 
-[//]: # (grpc localhost:8080 ls)
+You can use these options to test mutual TLS locally. Here's a sequence of
+commands that creates a "client CA" that the server use to verify clients, and a
+keypair for the client to use:
 
-[//]: # (```)
+```sh
+openssl genrsa -out client-ca.key 4096
+openssl req -x509 -new -nodes -sha256 -key server-ca.key -subj "/CN=example-client-ca" -days 365 -out client-ca.crt
 
-[//]: # ()
-[//]: # (```text)
+openssl genrsa -out client.key 4096
+openssl req -new -sha256 -key client.key -subj "/CN=example-client" -out client.csr
 
-[//]: # (echo.Echo.Ping)
+openssl x509 -req -sha256 -in client.csr -CA client-ca.crt -CAkey client-ca.key -set_serial 1 -out client.crt -days 365
+```
 
-[//]: # (echo.Echo.Echo)
+Then you could connect to the server, with mutual TLS authentication, by
+running:
 
-[//]: # ([...])
+```sh
+grpc localhost:50051 ls \
+  --server-root-ca server-ca.crt --server-name example-server.example.com \
+  --client-cert client.crt --client-key client.key
+```
 
-[//]: # (```)
+### Verbose Logging
 
-[//]: # ()
-[//]: # (`ls -l`, or its alias `ll`, shows you the signature of each method:)
+`grpc` is built on top of [the standard grpc-go
+client](https://github.com/grpc/grpc-go), which has built-in support for
+logging. You can enable this logging by passing the environment variables:
 
-[//]: # ()
-[//]: # (```bash)
+```sh
+GRPC_GO_LOG_VERBOSITY_LEVEL=99 GRPC_GO_LOG_SEVERITY_LEVEL=info grpc ...
+```
 
-[//]: # (grpc localhost:8080 ll)
+Which will enable logging of the form:
 
-[//]: # (```)
-
-[//]: # ()
-[//]: # (```text)
-
-[//]: # (rpc echo.Echo.Ping&#40;google.protobuf.Empty&#41; returns &#40;echo.PingMessage&#41;)
-
-[//]: # (rpc echo.Echo.Echo&#40;echo.EchoMessage&#41; returns &#40;echo.EchoMessage&#41;)
-
-[//]: # ([...])
-
-[//]: # (```)
-
-[//]: # ()
-[//]: # (## Method Discovery)
-
-[//]: # ()
-[//]: # (You can't call a gRPC method without knowing the signature of that gRPC method)
-
-[//]: # (-- what its input and output types are, and whether the client and/or server is)
-
-[//]: # (streaming.)
-
-[//]: # ()
-[//]: # (To deal with this, gRPCake supports three different ways of discovering methods)
-
-[//]: # (and their signatures:)
-
-[//]: # ()
-[//]: # (* With the `reflection` strategy, gRPCake uses the gRPC reflection API)
-
-[//]: # (* With the `protoset` strategy, gRPCake loads methods from a `.protoset` file)
-
-[//]: # (* With the `proto-path` strategy, gRPCake loads methods by compiling `.proto`)
-
-[//]: # (  files into a `.protoset` file for you)
+```text
+2022/07/07 10:57:39 INFO: [core] original dial target is: "localhost:50051"
+2022/07/07 10:57:39 INFO: [core] parsed dial target is: {Scheme:localhost Authority: Endpoint:50051 URL:{Scheme:localhost Opaque:50051 User: Host: Path: RawPath: ForceQuery:false RawQuery: Fragment: RawFragment:}}
+2022/07/07 10:57:39 INFO: [core] fallback to scheme "passthrough"
+2022/07/07 10:57:39 INFO: [core] parsed dial target is: {Scheme:passthrough Authority: Endpoint:localhost:50051 URL:{Scheme:passthrough Opaque: User: Host: Path:/localhost:50051 RawPath: ForceQuery:false RawQuery: Fragment: RawFragment:}}
+...
+```
